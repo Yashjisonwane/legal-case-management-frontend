@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import api, { API_BASE_URL } from '../../../services/api';
+import { useToast } from '../../../components/UI.jsx';
 
-export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, toast, accountId = null }) {
+export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, accountId = null }) {
+  const { toast } = useToast();
   // Fields
   const [toEmails, setToEmails] = useState([]);
   const [ccEmails, setCcEmails] = useState([]);
@@ -84,36 +86,7 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
         }
       })();
 
-      // Auto-populate for replies/forwards
-      if (data?.mode && data?.originalEmail) {
-        const og = data.originalEmail;
-        if (data.mode === 'reply') {
-          setToEmails(og.sender?.email ? [og.sender.email] : []);
-          setSubject(`Re: ${og.subject || ''}`);
-          setTimeout(() => {
-            if (editorRef.current) {
-              editorRef.current.innerHTML = `<br/><br/>--- Original Message ---<br/>${og.message_body}`;
-            }
-          }, 500);
-        } else if (data.mode === 'forward') {
-          setSubject(`Fwd: ${og.subject || ''}`);
-          setTimeout(() => {
-            if (editorRef.current) {
-              editorRef.current.innerHTML = `<br/><br/>--- Forwarded Message ---<br/>${og.message_body}`;
-            }
-          }, 500);
-        }
-      }
-
-      // User Signature Load
-      let currentSignature = user?.signature || '';
-      if (currentSignature && !currentSignature.includes('draggable')) {
-        currentSignature = currentSignature.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
-      }
-      setSignatureText(currentSignature);
-      setSignatureInput(currentSignature);
-
-      // Reset Form fields
+      // 1. Reset/Initialize form fields first
       setToEmails(data?.to ? (Array.isArray(data.to) ? data.to : [data.to]) : []);
       setCcEmails(data?.cc ? (Array.isArray(data.cc) ? data.cc : [data.cc]) : []);
       setBccEmails(data?.bcc ? (Array.isArray(data.bcc) ? data.bcc : [data.bcc]) : []);
@@ -122,7 +95,63 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
       setUploadProgress(null);
       setSending(false);
 
-      // Setup signature injection in editor
+      // 2. User Signature Load
+      let currentSignature = user?.signature || '';
+      if (currentSignature && !currentSignature.includes('draggable')) {
+        currentSignature = currentSignature.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
+      }
+      setSignatureText(currentSignature);
+      setSignatureInput(currentSignature);
+
+      // 3. Auto-populate for replies/reply_all/forwards
+      if (data?.mode && data?.originalEmail) {
+        const og = data.originalEmail;
+        const currentUser = JSON.parse(localStorage.getItem('vktori_user') || 'null');
+        const currentUserEmail = (currentUser?.email || '').trim().toLowerCase();
+
+        if (data.mode === 'reply') {
+          setToEmails(og.sender?.email ? [og.sender.email] : []);
+          setSubject(og.subject?.startsWith('Re:') ? og.subject : `Re: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Original Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        } else if (data.mode === 'reply_all') {
+          const senderEmail = (og.sender?.email || '').trim().toLowerCase();
+          const ogTo = (og.to || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+          const ogCc = (og.cc || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+          const toSet = new Set();
+          if (senderEmail && senderEmail !== currentUserEmail) toSet.add(senderEmail);
+          ogTo.forEach(e => {
+            if (e !== currentUserEmail) toSet.add(e);
+          });
+
+          const ccSet = new Set();
+          ogCc.forEach(e => {
+            if (e !== currentUserEmail) ccSet.add(e);
+          });
+
+          setToEmails(Array.from(toSet));
+          setCcEmails(Array.from(ccSet));
+          setSubject(og.subject?.startsWith('Re:') ? og.subject : `Re: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Original Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        } else if (data.mode === 'forward') {
+          setSubject(og.subject?.startsWith('Fwd:') ? og.subject : `Fwd: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Forwarded Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        }
+      }
+
+      // 4. Setup signature injection in editor
       setTimeout(() => {
         if (editorRef.current) {
           const defaultBody = data?.message || '<br/><br/><br/>';
@@ -130,8 +159,11 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
           if (currentSignature) {
             bodyWithSignature = `${defaultBody}<br/>${currentSignature}<br/><br/><br/>`;
           }
-          editorRef.current.innerHTML = bodyWithSignature;
-          historyRef.current = [bodyWithSignature];
+          // Only apply defaultBody if NOT a reply/reply_all/forward (which already sets the HTML asynchronously)
+          if (!data?.mode) {
+            editorRef.current.innerHTML = bodyWithSignature;
+          }
+          historyRef.current = [editorRef.current.innerHTML];
           historyIndexRef.current = 0;
           restoreCursorAtEnd();
           updateToolbarActiveStates();
@@ -858,7 +890,8 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
       cc: ccEmails,
       bcc: bccEmails,
       track_opens: trackOpens,
-      request_read_receipt: requestReadReceipt
+      request_read_receipt: requestReadReceipt,
+      reply_to_id: (data?.mode === 'reply' || data?.mode === 'reply_all') ? data.originalEmail?.id : null
     };
 
     try {

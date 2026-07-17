@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import FolderList from './components/FolderList.jsx';
 import EmailList from './components/EmailList.jsx';
@@ -7,13 +7,15 @@ import TitanComposeEmailModal from './components/TitanComposeEmailModal.jsx';
 import { useToast } from '../../components/UI.jsx';
 
 export default function TitanEmailModule() {
-  const [folders, setFolders] = useState([
+  const [folders] = useState([
     { id: 'inbox', label: 'Inbox', icon: '📥' },
     { id: 'sent', label: 'Sent', icon: '📤' },
     { id: 'drafts', label: 'Drafts', icon: '📝' },
     { id: 'trash', label: 'Trash', icon: '🗑️' },
     { id: 'spam', label: 'Spam', icon: '🚫' },
     { id: 'archive', label: 'Archive', icon: '📦' },
+    { id: 'starred', label: 'Starred', icon: '⭐' },
+    { id: 'flagged', label: 'Flagged', icon: '🚩' },
   ]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [messages, setMessages] = useState([]);
@@ -21,10 +23,15 @@ export default function TitanEmailModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [composeData, setComposeData] = useState(null); // Used for replies/forwards/drafts
+  const [composeData, setComposeData] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [folderCounts, setFolderCounts] = useState({});
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [threadMessages, setThreadMessages] = useState([]);
   const { toast } = useToast();
 
-  const fetchMessages = async (folder, search = '') => {
+  // ── Fetch Messages ──────────────────────────────────────
+  const fetchMessages = useCallback(async (folder, search = '') => {
     try {
       setIsLoading(true);
       const queryParams = new URLSearchParams();
@@ -39,33 +46,118 @@ export default function TitanEmailModule() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  // ── Fetch Folder Counts ─────────────────────────────────
+  const fetchFolderCounts = useCallback(async () => {
+    try {
+      const res = await api.request('/titan-email/folder-counts');
+      if (res.data) setFolderCounts(res.data);
+    } catch (err) {
+      // Silently fail
+    }
+  }, []);
+
+  // ── Fetch Thread ────────────────────────────────────────
+  const fetchThread = useCallback(async (emailId) => {
+    try {
+      const res = await api.request(`/titan-email/messages/${emailId}/thread`);
+      if (res.data && res.data.length > 1) {
+        setThreadMessages(res.data);
+      } else {
+        setThreadMessages([]);
+      }
+    } catch (err) {
+      setThreadMessages([]);
+    }
+  }, []);
 
   useEffect(() => {
     fetchMessages(selectedFolder, searchQuery);
-    // Auto-refresh every 2 mins for background sync
+    fetchFolderCounts();
     const interval = setInterval(() => {
       fetchMessages(selectedFolder, searchQuery);
+      fetchFolderCounts();
     }, 120000);
     return () => clearInterval(interval);
-  }, [selectedFolder, searchQuery]);
+  }, [selectedFolder, searchQuery, fetchMessages, fetchFolderCounts]);
 
+  // ── Auto Mark Read on Select ────────────────────────────
+  const handleSelectEmail = useCallback(async (email) => {
+    setSelectedEmail(email);
+    setThreadMessages([]);
+    if (email && !email.is_read) {
+      try {
+        await api.request(`/titan-email/messages/${email.id}/state`, {
+          method: 'PUT',
+          body: { is_read: true },
+        });
+        // Update local state
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, is_read: true, read_at: new Date().toISOString() } : m));
+        email.is_read = true;
+        fetchFolderCounts();
+      } catch (err) {
+        // Silently fail
+      }
+    }
+    // Fetch thread for this email
+    if (email) fetchThread(email.id);
+  }, [fetchThread, fetchFolderCounts]);
+
+  // ── Refresh helper ──────────────────────────────────────
+  const refresh = useCallback(() => {
+    fetchMessages(selectedFolder, searchQuery);
+    fetchFolderCounts();
+  }, [selectedFolder, searchQuery, fetchMessages, fetchFolderCounts]);
+
+  // ── Handle Single Actions ───────────────────────────────
   const handleAction = async (action, email) => {
     try {
       if (action === 'delete') {
         await api.request(`/titan-email/messages/${email.id}`, { method: 'DELETE' });
-        toast('Message deleted', 'success');
+        toast(email.folder === 'trash' ? 'Message permanently deleted' : 'Message moved to Trash', 'success');
         setSelectedEmail(null);
-        fetchMessages(selectedFolder, searchQuery);
-      } else if (action === 'star' || action === 'flag') {
-        const payload = action === 'star' ? { is_starred: !email.is_starred } : { is_flagged: !email.is_flagged };
-        await api.request(`/titan-email/messages/${email.id}`, { method: 'PUT', body: payload });
-        fetchMessages(selectedFolder, searchQuery);
-        if (selectedEmail?.id === email.id) {
-          setSelectedEmail({ ...selectedEmail, ...payload });
-        }
-      } else if (action === 'reply' || action === 'forward') {
-        setComposeData({ mode: action, originalEmail: email });
+        refresh();
+      } else if (action === 'restore') {
+        await api.request(`/titan-email/messages/${email.id}/restore`, { method: 'PUT' });
+        toast('Message restored to Inbox', 'success');
+        setSelectedEmail(null);
+        refresh();
+      } else if (action === 'archive') {
+        await api.request(`/titan-email/messages/${email.id}/move`, { method: 'PUT', body: { folder: 'archive' } });
+        toast('Message archived', 'success');
+        setSelectedEmail(null);
+        refresh();
+      } else if (action === 'star') {
+        const newVal = !email.is_starred;
+        await api.request(`/titan-email/messages/${email.id}/state`, { method: 'PUT', body: { is_starred: newVal } });
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, is_starred: newVal } : m));
+        if (selectedEmail?.id === email.id) setSelectedEmail(prev => ({ ...prev, is_starred: newVal }));
+        toast(newVal ? 'Starred' : 'Unstarred', 'info');
+      } else if (action === 'flag') {
+        const newVal = !email.is_flagged;
+        await api.request(`/titan-email/messages/${email.id}/state`, { method: 'PUT', body: { is_flagged: newVal } });
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, is_flagged: newVal } : m));
+        if (selectedEmail?.id === email.id) setSelectedEmail(prev => ({ ...prev, is_flagged: newVal }));
+        toast(newVal ? 'Flagged' : 'Unflagged', 'info');
+      } else if (action === 'mark_read') {
+        await api.request(`/titan-email/messages/${email.id}/state`, { method: 'PUT', body: { is_read: true } });
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, is_read: true } : m));
+        if (selectedEmail?.id === email.id) setSelectedEmail(prev => ({ ...prev, is_read: true }));
+        fetchFolderCounts();
+      } else if (action === 'mark_unread') {
+        await api.request(`/titan-email/messages/${email.id}/state`, { method: 'PUT', body: { is_read: false } });
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, is_read: false } : m));
+        if (selectedEmail?.id === email.id) setSelectedEmail(prev => ({ ...prev, is_read: false }));
+        fetchFolderCounts();
+      } else if (action === 'reply') {
+        setComposeData({ mode: 'reply', originalEmail: email });
+        setIsComposeOpen(true);
+      } else if (action === 'reply_all') {
+        setComposeData({ mode: 'reply_all', originalEmail: email });
+        setIsComposeOpen(true);
+      } else if (action === 'forward') {
+        setComposeData({ mode: 'forward', originalEmail: email });
         setIsComposeOpen(true);
       }
     } catch (err) {
@@ -73,40 +165,109 @@ export default function TitanEmailModule() {
     }
   };
 
+  // ── Handle Bulk Actions ─────────────────────────────────
+  const handleBulkAction = async (action) => {
+    if (selectedIds.size === 0) return;
+    try {
+      await api.request('/titan-email/bulk', {
+        method: 'POST',
+        body: { messageIds: Array.from(selectedIds), action },
+      });
+      toast(`${action.replace('_', ' ')} applied to ${selectedIds.size} message(s)`, 'success');
+      setSelectedIds(new Set());
+      setSelectedEmail(null);
+      refresh();
+    } catch (err) {
+      toast(`Bulk ${action} failed`, 'error');
+    }
+  };
+
+  // ── Toggle selection ────────────────────────────────────
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === messages.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(messages.map(m => m.id)));
+    }
+  };
+
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-slate-900/50 text-white overflow-hidden rounded-xl border border-white/10 shadow-2xl m-4">
+    <div className="relative flex h-[calc(100vh-80px)] bg-slate-900/50 text-white overflow-hidden rounded-xl border border-white/10 shadow-2xl m-2 sm:m-4">
+      
+      {/* Mobile Overlay for Sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Left Panel: Folders */}
-      <FolderList 
-        folders={folders} 
-        selectedFolder={selectedFolder} 
-        onSelect={setSelectedFolder} 
-        onCompose={() => { setComposeData(null); setIsComposeOpen(true); }}
-      />
+      <div className={`
+        absolute md:relative z-50 md:z-0 h-full
+        transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <FolderList 
+          folders={folders} 
+          selectedFolder={selectedFolder} 
+          onSelect={(f) => { setSelectedFolder(f); setSelectedIds(new Set()); setIsSidebarOpen(false); }} 
+          onCompose={() => { setComposeData(null); setIsComposeOpen(true); setIsSidebarOpen(false); }}
+          folderCounts={folderCounts}
+        />
+      </div>
       
       {/* Center Panel: Email List */}
-      <EmailList 
-        folder={selectedFolder}
-        messages={messages}
-        isLoading={isLoading}
-        selectedEmail={selectedEmail}
-        onSelect={setSelectedEmail}
-        searchQuery={searchQuery}
-        onSearch={setSearchQuery}
-        onAction={handleAction}
-      />
+      <div className={`
+        flex-1 md:flex-none h-full w-full md:w-[320px] lg:w-[400px]
+        ${selectedEmail ? 'hidden md:flex' : 'flex'}
+      `}>
+        <EmailList 
+          folder={selectedFolder}
+          messages={messages}
+          isLoading={isLoading}
+          selectedEmail={selectedEmail}
+          onSelect={handleSelectEmail}
+          searchQuery={searchQuery}
+          onSearch={setSearchQuery}
+          onAction={handleAction}
+          onMenuClick={() => setIsSidebarOpen(true)}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+          onBulkAction={handleBulkAction}
+        />
+      </div>
       
       {/* Right Panel: Email Preview */}
-      <EmailPreview 
-        email={selectedEmail} 
-        onAction={handleAction}
-      />
+      <div className={`
+        flex-1 h-full w-full
+        ${selectedEmail ? 'flex absolute inset-0 z-30 bg-slate-900 md:relative md:z-0' : 'hidden md:flex'}
+      `}>
+        <EmailPreview 
+          email={selectedEmail} 
+          onAction={handleAction}
+          onBack={() => setSelectedEmail(null)}
+          threadMessages={threadMessages}
+          currentFolder={selectedFolder}
+        />
+      </div>
 
       {/* Compose Modal */}
       {isComposeOpen && (
         <TitanComposeEmailModal 
           isOpen={isComposeOpen}
           onClose={() => setIsComposeOpen(false)} 
-          onSave={() => fetchMessages(selectedFolder, searchQuery)}
+          onSave={() => refresh()}
           data={composeData}
         />
       )}
