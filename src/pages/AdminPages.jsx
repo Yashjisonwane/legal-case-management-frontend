@@ -5938,12 +5938,14 @@ export function SettingsPage({ toast }) {
         setCompanyProfile(profileRes.data || {});
       } catch (e) {
         toast('Failed to load settings', 'error');
+      } finally {
+        setLoading(false);
       }
     })();
   }, [toast]);
 
   const handleSave = async () => {
-    if (isFirstLoad.current) { setLoading(true); isFirstLoad.current = false; }
+    setLoading(true);
     try {
       await Promise.all([
         api.settings.update(settings),
@@ -6033,7 +6035,7 @@ export function SettingsPage({ toast }) {
 
   const toggleOutlookSync = async () => {
     try {
-      if (isFirstLoad.current) { setLoading(true); isFirstLoad.current = false; }
+      setLoading(true);
       if (outlookConnected) {
         await api.calendar.disconnectOutlook();
         setOutlookConnected(false);
@@ -6051,7 +6053,7 @@ export function SettingsPage({ toast }) {
 
   const toggleTitanSync = async () => {
     try {
-      if (isFirstLoad.current) { setLoading(true); isFirstLoad.current = false; }
+      setLoading(true);
       const isConnected = !!settings.titan_sync_enabled;
       await api.settings.update({ titan_sync_enabled: !isConnected });
       setSettings(prev => ({ ...prev, titan_sync_enabled: !isConnected }));
@@ -6187,8 +6189,9 @@ export function SettingsPage({ toast }) {
             <button onClick={async () => {
                 if (!passwordForm.currentPassword || !passwordForm.newPassword) return toast('Please fill in all password fields', 'error');
                 if (passwordForm.newPassword !== passwordForm.confirmPassword) return toast('Passwords do not match', 'error');
+                if (passwordForm.currentPassword === passwordForm.newPassword) return toast('New password cannot be the same as the current password', 'error');
                 try {
-                  if (isFirstLoad.current) { setLoading(true); isFirstLoad.current = false; }
+                  setLoading(true);
                   await api.auth.changePassword({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword });
                   toast('Password updated successfully!', 'success');
                   setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });

@@ -46,7 +46,7 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
   const typingTimeoutRef = useRef(null);
   const savedRangeRef = useRef(null);
   const canvasRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
   const lastX = useRef(0);
   const lastY = useRef(0);
 
@@ -91,7 +91,10 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       })();
 
       // User Signature Load
-      const currentSignature = user?.signature || '';
+      let currentSignature = user?.signature || '';
+      if (currentSignature && !currentSignature.includes('draggable')) {
+        currentSignature = currentSignature.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
+      }
       setSignatureText(currentSignature);
       setSignatureInput(currentSignature);
 
@@ -107,10 +110,10 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       // Setup signature injection in editor
       setTimeout(() => {
         if (editorRef.current) {
-          const defaultBody = data?.message || '';
+          const defaultBody = data?.message || '<br/><br/><br/>';
           let bodyWithSignature = defaultBody;
           if (currentSignature) {
-            bodyWithSignature = `${defaultBody}<br/><br/><div class="email-signature-block" style="font-family: Arial, sans-serif; color: #aaa; margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px;">${currentSignature}</div>`;
+            bodyWithSignature = `${defaultBody}<br/>${currentSignature}<br/><br/><br/>`;
           }
           editorRef.current.innerHTML = bodyWithSignature;
           historyRef.current = [bodyWithSignature];
@@ -492,13 +495,13 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       clientY = e.clientY;
     }
 
-    setIsDrawing(true);
+    isDrawingRef.current = true;
     lastX.current = clientX - rect.left;
     lastY.current = clientY - rect.top;
   };
 
   const draw = (e) => {
-    if (!isDrawing || !canvasRef.current) return;
+    if (!isDrawingRef.current || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
@@ -526,7 +529,7 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
   };
 
   const stopDrawing = () => {
-    setIsDrawing(false);
+    isDrawingRef.current = false;
   };
 
   const handleClearSignature = () => {
@@ -554,7 +557,7 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     const base64 = canvas.toDataURL('image/png');
-    const signatureHtml = `<img src="${base64}" alt="Digital Signature" style="max-height: 50px; vertical-align: middle; display: inline-block;" />`;
+    const signatureHtml = `<img src="${base64}" alt="Digital Signature" draggable="true" style="max-height: 50px; vertical-align: middle; display: inline-block; cursor: grab;" />`;
 
     try {
       const res = await api.request('/auth/signature', {
@@ -568,9 +571,9 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
         
         // Update signature block inside editor if present
         if (editorRef.current) {
-          const sigBlock = editorRef.current.querySelector('.email-signature-block');
-          if (sigBlock) {
-            sigBlock.innerHTML = signatureHtml;
+          const existingSig = editorRef.current.querySelector('img[alt="Digital Signature"]');
+          if (existingSig) {
+            existingSig.outerHTML = signatureHtml;
             saveStateToHistory(editorRef.current.innerHTML);
           }
         }
@@ -587,15 +590,12 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
     if (editorRef.current) {
       restoreSelection();
       
-      // If signature block already exists, we locate and update it
-      const sigBlock = editorRef.current.querySelector('.email-signature-block');
-      if (sigBlock) {
-        sigBlock.innerHTML = signatureText;
-        sigBlock.style.display = 'block';
+      const existingSig = editorRef.current.querySelector('img[alt="Digital Signature"]');
+      if (existingSig) {
+        existingSig.outerHTML = signatureText;
         toast('Signature updated inside editor', 'success');
       } else {
-        const sigHtml = `<br/><br/><div class="email-signature-block" style="font-family: Arial, sans-serif; margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px;">${signatureText}</div>`;
-        execCommand('insertHTML', sigHtml);
+        execCommand('insertHTML', `&nbsp;${signatureText}&nbsp;`);
         toast('Signature inserted', 'success');
       }
       setShowSignatureDropdown(false);
@@ -604,9 +604,9 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
 
   const handleRemoveSignatureFromEditor = () => {
     if (editorRef.current) {
-      const sigBlock = editorRef.current.querySelector('.email-signature-block');
-      if (sigBlock) {
-        sigBlock.remove();
+      const existingSig = editorRef.current.querySelector('img[alt="Digital Signature"]');
+      if (existingSig) {
+        existingSig.remove();
         saveStateToHistory(editorRef.current.innerHTML);
         toast('Signature removed from email body', 'success');
       } else {
@@ -730,7 +730,18 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
     }
   };
 
+  const handleDragOver = (e) => {
+    const types = Array.from(e.dataTransfer?.types || []);
+    if (!types.includes('text/html')) {
+      e.preventDefault();
+    }
+  };
+
   const handleFileDrop = (e) => {
+    const types = Array.from(e.dataTransfer?.types || []);
+    if (types.includes('text/html')) {
+      return; 
+    }
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files || []);
     if (files.length > 0) {
@@ -746,8 +757,12 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
 
   // Discard check
   const handleDiscardClick = () => {
-    const initialText = data?.message || '';
-    const initialSig = user?.signature ? `<br/><br/><div class="email-signature-block" style="font-family: Arial, sans-serif; color: #aaa; margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px;">${user.signature}</div>` : '';
+    const initialText = data?.message || '<br/><br/><br/>';
+    let sigWithDraggable = user?.signature || '';
+    if (sigWithDraggable && !sigWithDraggable.includes('draggable')) {
+      sigWithDraggable = sigWithDraggable.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
+    }
+    const initialSig = user?.signature ? `<br/>${sigWithDraggable}<br/><br/><br/>` : '';
     const initialBody = `${initialText}${initialSig}`;
     
     const isModified = 
@@ -839,7 +854,7 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
   return (
     <div 
       className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4"
-      onDragOver={e => e.preventDefault()}
+      onDragOver={handleDragOver}
       onDrop={handleFileDrop}
     >
       {/* Compose window popup */}
@@ -1334,6 +1349,10 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
             contentEditable={!sending}
             onKeyDown={handleEditorKeyDown}
             onPaste={handleEditorPaste}
+            onDragStart={() => { window.__isEditorDragging = true; }}
+            onDragEnd={() => { window.__isEditorDragging = false; }}
+            onDragOver={(e) => { if (window.__isEditorDragging) e.stopPropagation(); }}
+            onDrop={(e) => { if (window.__isEditorDragging) e.stopPropagation(); }}
             className="w-full h-full min-h-[200px] outline-none text-[14px] leading-relaxed custom-editor"
             placeholder="Write your email here..."
           />

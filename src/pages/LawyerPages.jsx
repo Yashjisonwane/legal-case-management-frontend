@@ -503,6 +503,9 @@ export function LawyerProfilePage({ toast }) {
     if (newPassword !== confirmPassword) {
       return toast('New passwords do not match', 'error');
     }
+    if (currentPassword === newPassword) {
+      return toast('New password cannot be the same as the current password', 'error');
+    }
     try {
       setUpdatingPassword(true);
       await api.auth.changePassword({ currentPassword, newPassword });
