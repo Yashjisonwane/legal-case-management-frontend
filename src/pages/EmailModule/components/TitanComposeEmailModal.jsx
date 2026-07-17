@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL } from '../../../services/api';
+import { useToast } from '../../../components/UI.jsx';
 
-export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, toast }) {
+export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, accountId = null }) {
+  const { toast } = useToast();
   // Fields
   const [toEmails, setToEmails] = useState([]);
   const [ccEmails, setCcEmails] = useState([]);
@@ -11,8 +13,6 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
   const [bccInput, setBccInput] = useState('');
   
   const [subject, setSubject] = useState('');
-  const [visibility, setVisibility] = useState('Shared');
-  const [matterId, setMatterId] = useState('');
 
   // Toggles & states
   const [showCc, setShowCc] = useState(false);
@@ -70,10 +70,6 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
   // Initialize
   useEffect(() => {
     if (isOpen) {
-      // Set Initial Matter ID
-      const initialMatterId = data?.matterId || '';
-      setMatterId(initialMatterId);
-
       // Load Templates and Invoices
       (async () => {
         try {
@@ -90,15 +86,7 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
         }
       })();
 
-      // User Signature Load
-      let currentSignature = user?.signature || '';
-      if (currentSignature && !currentSignature.includes('draggable')) {
-        currentSignature = currentSignature.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
-      }
-      setSignatureText(currentSignature);
-      setSignatureInput(currentSignature);
-
-      // Reset Form fields
+      // 1. Reset/Initialize form fields first
       setToEmails(data?.to ? (Array.isArray(data.to) ? data.to : [data.to]) : []);
       setCcEmails(data?.cc ? (Array.isArray(data.cc) ? data.cc : [data.cc]) : []);
       setBccEmails(data?.bcc ? (Array.isArray(data.bcc) ? data.bcc : [data.bcc]) : []);
@@ -107,7 +95,63 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       setUploadProgress(null);
       setSending(false);
 
-      // Setup signature injection in editor
+      // 2. User Signature Load
+      let currentSignature = user?.signature || '';
+      if (currentSignature && !currentSignature.includes('draggable')) {
+        currentSignature = currentSignature.replace('<img ', '<img draggable="true" style="cursor: grab;" ');
+      }
+      setSignatureText(currentSignature);
+      setSignatureInput(currentSignature);
+
+      // 3. Auto-populate for replies/reply_all/forwards
+      if (data?.mode && data?.originalEmail) {
+        const og = data.originalEmail;
+        const currentUser = JSON.parse(localStorage.getItem('vktori_user') || 'null');
+        const currentUserEmail = (currentUser?.email || '').trim().toLowerCase();
+
+        if (data.mode === 'reply') {
+          setToEmails(og.sender?.email ? [og.sender.email] : []);
+          setSubject(og.subject?.startsWith('Re:') ? og.subject : `Re: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Original Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        } else if (data.mode === 'reply_all') {
+          const senderEmail = (og.sender?.email || '').trim().toLowerCase();
+          const ogTo = (og.to || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+          const ogCc = (og.cc || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+          const toSet = new Set();
+          if (senderEmail && senderEmail !== currentUserEmail) toSet.add(senderEmail);
+          ogTo.forEach(e => {
+            if (e !== currentUserEmail) toSet.add(e);
+          });
+
+          const ccSet = new Set();
+          ogCc.forEach(e => {
+            if (e !== currentUserEmail) ccSet.add(e);
+          });
+
+          setToEmails(Array.from(toSet));
+          setCcEmails(Array.from(ccSet));
+          setSubject(og.subject?.startsWith('Re:') ? og.subject : `Re: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Original Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        } else if (data.mode === 'forward') {
+          setSubject(og.subject?.startsWith('Fwd:') ? og.subject : `Fwd: ${og.subject || ''}`);
+          setTimeout(() => {
+            if (editorRef.current) {
+              editorRef.current.innerHTML = `<br/><br/>--- Forwarded Message ---<br/>From: ${og.sender?.full_name || 'Sender'} &lt;${og.sender?.email || ''}&gt;<br/>Sent: ${new Date(og.created_at).toLocaleString()}<br/>To: ${og.to || ''}<br/>Subject: ${og.subject || ''}<br/><br/>${og.message_body}`;
+            }
+          }, 500);
+        }
+      }
+
+      // 4. Setup signature injection in editor
       setTimeout(() => {
         if (editorRef.current) {
           const defaultBody = data?.message || '<br/><br/><br/>';
@@ -115,8 +159,11 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
           if (currentSignature) {
             bodyWithSignature = `${defaultBody}<br/>${currentSignature}<br/><br/><br/>`;
           }
-          editorRef.current.innerHTML = bodyWithSignature;
-          historyRef.current = [bodyWithSignature];
+          // Only apply defaultBody if NOT a reply/reply_all/forward (which already sets the HTML asynchronously)
+          if (!data?.mode) {
+            editorRef.current.innerHTML = bodyWithSignature;
+          }
+          historyRef.current = [editorRef.current.innerHTML];
           historyIndexRef.current = 0;
           restoreCursorAtEnd();
           updateToolbarActiveStates();
@@ -144,6 +191,38 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, [isOpen]);
+
+  // Auto-save draft
+  const draftIdRef = useRef(data?.id || null);
+  useEffect(() => {
+    if (!isOpen || sending) return;
+    
+    const interval = setInterval(async () => {
+      const finalBodyText = editorRef.current?.innerHTML || '';
+      if (!toEmails.length && !subject && !finalBodyText.replace(/<[^>]*>?/gm, '').trim()) return; 
+      
+      const payload = {
+        id: draftIdRef.current,
+        accountId,
+        subject,
+        message_body: finalBodyText,
+        to: toEmails,
+        cc: ccEmails,
+        bcc: bccEmails,
+      };
+
+      try {
+        const res = await api.request('/titan-email/draft', { method: 'POST', body: payload });
+        if (res.data?.data?.id) {
+          draftIdRef.current = res.data.data.id;
+        }
+      } catch (err) {
+        console.error('Auto-save draft failed', err);
+      }
+    }, 25000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, sending, toEmails, ccEmails, bccEmails, subject, accountId]);
 
   // Handle Selection updates
   const saveSelection = () => {
@@ -804,34 +883,24 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
       });
     }
 
-    const isActivity = String(matterId).startsWith('act_');
-    const parsedMatterId = isActivity ? null : (matterId ? parseInt(String(matterId), 10) : null);
-    const parsedActivityId = isActivity ? parseInt(String(matterId).replace('act_', ''), 10) : null;
-
     const payload = {
-      matter_id: parsedMatterId,
-      activity_id: parsedActivityId,
-      communication_type: 'email_log',
-      visibility: visibility === 'Shared' ? 'client_shared' : 'internal',
       subject,
       message_body: finalBodyText,
       to: toEmails,
       cc: ccEmails,
       bcc: bccEmails,
       track_opens: trackOpens,
-      request_read_receipt: requestReadReceipt
+      request_read_receipt: requestReadReceipt,
+      reply_to_id: (data?.mode === 'reply' || data?.mode === 'reply_all') ? data.originalEmail?.id : null
     };
 
     try {
       const isEdit = !!data?.id;
       let res;
       if (isEdit) {
-        res = await api.request(`/communications/${data.id}`, {
-          method: 'PUT',
-          body: payload
-        });
+        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId, ...payload, id: data.id } });
       } else {
-        res = await api.communications.create(payload);
+        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId, ...payload } });
       }
 
       if (res.success || res.data) {
@@ -1070,36 +1139,6 @@ export default function EmailComposeModal({ isOpen, onClose, onSave, data = {}, 
             />
           </div>
 
-          {/* Matter relation and visibility fields */}
-          <div className="flex flex-col gap-2.5 sm:grid sm:grid-cols-2 sm:gap-4 text-[13px] border-b border-white/5 pb-2">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              <span className="w-20 text-white/40 font-800 uppercase tracking-wider text-[11px]">Related Case</span>
-              <select 
-                disabled={sending}
-                value={matterId}
-                onChange={e => setMatterId(e.target.value)}
-                className="bg-[#1c2436] border border-white/10 rounded-xl px-3 py-1.5 text-white outline-none w-full flex-1"
-              >
-                <option value="">Select Matter...</option>
-                {(lookups.matters || []).map(m => (
-                  <option key={m.id} value={m.id}>{m.matter_number} — {m.title}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              <span className="w-20 text-white/40 font-800 uppercase tracking-wider text-[11px]">Visibility</span>
-              <select 
-                disabled={sending}
-                value={visibility}
-                onChange={e => setVisibility(e.target.value)}
-                className="bg-[#1c2436] border border-white/10 rounded-xl px-3 py-1.5 text-white outline-none w-full flex-1"
-              >
-                <option value="Shared">Shared (Party & Firm)</option>
-                <option value="Internal">Internal (Firm Only)</option>
-              </select>
-            </div>
-          </div>
         </div>
 
         {/* RTE Formatter ribbon */}

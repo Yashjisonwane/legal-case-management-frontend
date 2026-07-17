@@ -721,6 +721,9 @@ export function ClientProfilePage({ toast }) {
     if (newPassword.length < 4) {
       return toast('Credential density too low (min 4 chars).', 'error');
     }
+    if (currentPassword === newPassword) {
+      return toast('New password cannot be the same as the current password', 'error');
+    }
 
     try {
       setUpdatingPassword(true);
