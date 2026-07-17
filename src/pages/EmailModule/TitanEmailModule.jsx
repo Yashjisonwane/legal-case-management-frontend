@@ -17,7 +17,13 @@ export default function TitanEmailModule() {
     { id: 'starred', label: 'Starred', icon: '⭐' },
     { id: 'flagged', label: 'Flagged', icon: '🚩' },
   ]);
-  const [customFolders, setCustomFolders] = useState([]);
+  const currentUser = JSON.parse(localStorage.getItem('vktori_user') || 'null');
+  const userId = currentUser?.id || 1;
+  const localStorageKey = `vktori_custom_email_folders_${userId}`;
+
+  const [customFolders, setCustomFolders] = useState(() => {
+    return JSON.parse(localStorage.getItem(`vktori_custom_email_folders_${userId}`) || '[]');
+  });
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [messages, setMessages] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState(null);
@@ -64,11 +70,19 @@ export default function TitanEmailModule() {
   const fetchCustomFolders = useCallback(async () => {
     try {
       const res = await api.request('/titan-email/custom-folders');
-      if (res.data) setCustomFolders(res.data);
+      if (res.data) {
+        setCustomFolders(prev => {
+          const stored = JSON.parse(localStorage.getItem(localStorageKey) || '[]');
+          const all = new Set([...stored, ...res.data]);
+          const merged = Array.from(all);
+          localStorage.setItem(localStorageKey, JSON.stringify(merged));
+          return merged;
+        });
+      }
     } catch (err) {
       // Silently fail
     }
-  }, []);
+  }, [localStorageKey]);
 
   // ── Fetch Thread ────────────────────────────────────────
   const fetchThread = useCallback(async (emailId) => {
@@ -122,8 +136,12 @@ export default function TitanEmailModule() {
       setSelectedFolder(cleanName);
       return;
     }
-    // Add locally immediately so it lists in the sidebar
-    setCustomFolders(prev => [...prev, cleanName]);
+    // Add locally and save to localStorage
+    setCustomFolders(prev => {
+      const next = [...prev, cleanName];
+      localStorage.setItem(localStorageKey, JSON.stringify(next));
+      return next;
+    });
     setSelectedFolder(cleanName);
     toast(`Custom folder "${folderName}" created`, 'success');
   };
