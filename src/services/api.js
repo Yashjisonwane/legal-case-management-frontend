@@ -384,6 +384,11 @@ export default {
   reports: reportsAPI,
   calendar: calendarAPI,
   notifications: notificationsAPI,
+  titanEmail: {
+    getAccounts: () => request('/titan-email/accounts'),
+    addAccount: (data) => request('/titan-email/accounts', { method: 'POST', body: data }),
+    deleteAccount: (id) => request(`/titan-email/accounts/${id}`, { method: 'DELETE' }),
+  },
   folders: {
     list: (params) => request('/folders', { params }),
     create: (data) => request('/folders', { method: 'POST', body: data }),

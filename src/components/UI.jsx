@@ -191,7 +191,7 @@ export function Tabs({ tabs, active, onChange }) {
     <div className="flex border-b border-white/10 mb-8 overflow-x-auto no-scrollbar scroll-smooth">
       {tabs.map(tab => (
         <button key={tab} onClick={() => onChange(tab)}
-          className={`tab-btn ${active === tab ? 'active' : ''}`}>
+          className={`tab-btn whitespace-nowrap flex-shrink-0 ${active === tab ? 'active' : ''}`}>
           {tab}
         </button>
       ))}
