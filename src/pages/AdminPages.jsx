@@ -5820,55 +5820,64 @@ function PracticeAreasTab({ toast }) {
   };
 
   return (
-    <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h3 className="text-[14px] font-900 text-white uppercase tracking-widest">Practice Areas</h3>
-          <p className="text-[11px] text-[#8a94a6] mt-1">Manage standard practice areas for new matters.</p>
+    <>
+      <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-[14px] font-900 text-white uppercase tracking-widest">Practice Areas</h3>
+            <p className="text-[11px] text-[#8a94a6] mt-1">Manage standard practice areas for new matters.</p>
+          </div>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'add-practice-area' } }))} className="btn btn-primary h-10 px-6 text-[11px] font-900 uppercase tracking-widest">
+            + Add Practice Area
+          </button>
         </div>
-        <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'add-practice-area' } }))} className="btn btn-primary h-10 px-6 text-[11px] font-900 uppercase tracking-widest">
-          + Add Practice Area
-        </button>
-      </div>
-      {loading ? <div className="text-[#8a94a6] text-center p-6 text-[12px]">Loading...</div> : (
-        <Table headers={['Name', 'Status', 'Actions']}>
-          {areas.map(a => (
-            <Tr key={a.id}>
-              <Td><span className="text-white font-600 text-[13px]">{a.name}</span></Td>
-              <Td>
-                <div onClick={() => toggleActive(a)} className={`w-10 h-5 rounded-full relative cursor-pointer transition-all duration-300 ${a.is_active ? 'bg-[#10b981]' : 'bg-white/10'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all duration-300 ${a.is_active ? 'left-[22px]' : 'left-0.5'}`} />
-                </div>
-              </Td>
-              <Td>
-                <div className="flex items-center gap-4">
-                  <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-practice-area', data: a } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
-                  <button onClick={() => setDeleteTarget(a)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
-                </div>
-              </Td>
-            </Tr>
-          ))}
-          {areas.length === 0 && <Tr><Td colSpan={3} className="text-center text-[#8a94a6] py-6 text-[12px]">No practice areas configured.</Td></Tr>}
-        </Table>
-      )}
+        {loading ? <div className="text-[#8a94a6] text-center p-6 text-[12px]">Loading...</div> : (
+          <Table headers={['Name', 'Status', 'Actions']}>
+            {areas.map(a => (
+              <Tr key={a.id}>
+                <Td><span className="text-white font-600 text-[13px]">{a.name}</span></Td>
+                <Td>
+                  <div onClick={() => toggleActive(a)} className={`w-10 h-5 rounded-full relative cursor-pointer transition-all duration-300 ${a.is_active ? 'bg-[#10b981]' : 'bg-white/10'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all duration-300 ${a.is_active ? 'left-[22px]' : 'left-0.5'}`} />
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-practice-area', data: a } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                    <button onClick={() => setDeleteTarget(a)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+            {areas.length === 0 && <Tr><Td colSpan={3} className="text-center text-[#8a94a6] py-6 text-[12px]">No practice areas configured.</Td></Tr>}
+          </Table>
+        )}
+      </Card>
 
       {deleteTarget && (
         <Modal
-          isOpen={!!deleteTarget}
-          onClose={() => setDeleteTarget(null)}
           title="Delete Practice Area"
-          confirmText="Delete"
-          onConfirm={async () => {
-            try {
-              await api.practiceAreas.remove(deleteTarget.id);
-              toast('Practice area deleted successfully', 'success');
-              loadAreas();
-              setDeleteTarget(null);
-            } catch (e) {
-              toast(e.message || 'Failed to delete practice area', 'error');
-            }
-          }}
-          confirmButtonClass="btn-danger"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button onClick={() => setDeleteTarget(null)} className="btn btn-secondary btn-sm">Cancel</button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await api.practiceAreas.remove(deleteTarget.id);
+                    toast('Practice area deleted successfully', 'success');
+                    loadAreas();
+                    setDeleteTarget(null);
+                  } catch (e) {
+                    toast(e.message || 'Failed to delete practice area', 'error');
+                  }
+                }} 
+                className="btn btn-primary btn-sm !bg-red-500 hover:!bg-red-600 !border-red-500"
+              >
+                Delete
+              </button>
+            </>
+          }
         >
           <div className="space-y-4">
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
@@ -5883,7 +5892,6 @@ function PracticeAreasTab({ toast }) {
           </div>
         </Modal>
       )}
-    </Card>
   );
 }
 
@@ -5924,56 +5932,65 @@ function CustomFieldsTab({ toast }) {
   };
 
   return (
-    <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h3 className="text-[14px] font-900 text-white uppercase tracking-widest">Custom Matter Fields</h3>
-          <p className="text-[11px] text-[#8a94a6] mt-1">Configure dynamic fields to collect custom data on matters.</p>
+    <>
+      <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-[14px] font-900 text-white uppercase tracking-widest">Custom Matter Fields</h3>
+            <p className="text-[11px] text-[#8a94a6] mt-1">Configure dynamic fields to collect custom data on matters.</p>
+          </div>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'add-custom-field' } }))} className="btn btn-primary h-10 px-6 text-[11px] font-900 uppercase tracking-widest">
+            + Add Custom Field
+          </button>
         </div>
-        <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'add-custom-field' } }))} className="btn btn-primary h-10 px-6 text-[11px] font-900 uppercase tracking-widest">
-          + Add Custom Field
-        </button>
-      </div>
-      {loading ? <div className="text-[#8a94a6] text-center p-6 text-[12px]">Loading...</div> : (
-        <Table headers={['Name', 'Type', 'Status', 'Actions']}>
-          {fields.map(f => (
-            <Tr key={f.id}>
-              <Td><span className="text-white font-600 text-[13px]">{f.name}</span></Td>
-              <Td><span className="text-[#8a94a6] font-500 text-[12px] uppercase">{f.type}</span></Td>
-              <Td>
-                <div onClick={() => toggleActive(f)} className={`w-10 h-5 rounded-full relative cursor-pointer transition-all duration-300 ${f.is_active ? 'bg-[#10b981]' : 'bg-white/10'}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all duration-300 ${f.is_active ? 'left-[22px]' : 'left-0.5'}`} />
-                </div>
-              </Td>
-              <Td>
-                <div className="flex items-center gap-4">
-                  <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-custom-field', data: f } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
-                  <button onClick={() => setDeleteTarget(f)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
-                </div>
-              </Td>
-            </Tr>
-          ))}
-          {fields.length === 0 && <Tr><Td colSpan={4} className="text-center text-[#8a94a6] py-6 text-[12px]">No custom fields configured.</Td></Tr>}
-        </Table>
-      )}
+        {loading ? <div className="text-[#8a94a6] text-center p-6 text-[12px]">Loading...</div> : (
+          <Table headers={['Name', 'Type', 'Status', 'Actions']}>
+            {fields.map(f => (
+              <Tr key={f.id}>
+                <Td><span className="text-white font-600 text-[13px]">{f.name}</span></Td>
+                <Td><span className="text-[#8a94a6] font-500 text-[12px] uppercase">{f.type}</span></Td>
+                <Td>
+                  <div onClick={() => toggleActive(f)} className={`w-10 h-5 rounded-full relative cursor-pointer transition-all duration-300 ${f.is_active ? 'bg-[#10b981]' : 'bg-white/10'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all duration-300 ${f.is_active ? 'left-[22px]' : 'left-0.5'}`} />
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-custom-field', data: f } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                    <button onClick={() => setDeleteTarget(f)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+            {fields.length === 0 && <Tr><Td colSpan={4} className="text-center text-[#8a94a6] py-6 text-[12px]">No custom fields configured.</Td></Tr>}
+          </Table>
+        )}
+      </Card>
 
       {deleteTarget && (
         <Modal
-          isOpen={!!deleteTarget}
-          onClose={() => setDeleteTarget(null)}
           title="Delete Custom Field"
-          confirmText="Delete"
-          onConfirm={async () => {
-            try {
-              await api.customFields.remove(deleteTarget.id);
-              toast('Custom field deleted successfully', 'success');
-              loadFields();
-              setDeleteTarget(null);
-            } catch (e) {
-              toast(e.message || 'Failed to delete custom field', 'error');
-            }
-          }}
-          confirmButtonClass="btn-danger"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button onClick={() => setDeleteTarget(null)} className="btn btn-secondary btn-sm">Cancel</button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await api.customFields.remove(deleteTarget.id);
+                    toast('Custom field deleted successfully', 'success');
+                    loadFields();
+                    setDeleteTarget(null);
+                  } catch (e) {
+                    toast(e.message || 'Failed to delete custom field', 'error');
+                  }
+                }} 
+                className="btn btn-primary btn-sm !bg-red-500 hover:!bg-red-600 !border-red-500"
+              >
+                Delete
+              </button>
+            </>
+          }
         >
           <div className="space-y-4">
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
@@ -5988,7 +6005,6 @@ function CustomFieldsTab({ toast }) {
           </div>
         </Modal>
       )}
-    </Card>
   );
 }
 
