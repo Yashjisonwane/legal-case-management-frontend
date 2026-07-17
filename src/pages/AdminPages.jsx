@@ -3747,17 +3747,25 @@ export function CalendarPage({ toast, openModal, role = 'lawyer' }) {
     const currentOrder = cat.sort_order || 0;
     const targetOrder = targetCat.sort_order || 0;
 
-    // If orders are identical, let's offset them
     const newCurrentOrder = targetOrder;
     const newTargetOrder = currentOrder === targetOrder ? currentOrder + 1 : currentOrder;
+
+    // Optimistic update: swap instantly in local state so UI responds immediately
+    const prevCategories = [...categories];
+    const updated = [...categories];
+    updated[idx] = { ...cat, sort_order: newCurrentOrder };
+    updated[targetIdx] = { ...targetCat, sort_order: newTargetOrder };
+    updated.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    setCategories(updated);
 
     try {
       await Promise.all([
         api.calendar.updateCategory(cat.id, { sort_order: newCurrentOrder }),
         api.calendar.updateCategory(targetCat.id, { sort_order: newTargetOrder })
       ]);
-      loadData();
     } catch {
+      // Roll back to previous order if API fails
+      setCategories(prevCategories);
       toast('Failed to reorder category', 'error');
     }
   };
