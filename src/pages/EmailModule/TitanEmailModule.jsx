@@ -358,16 +358,16 @@ export default function TitanEmailModule() {
       {/* Mobile Overlay for Sidebar */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Left Panel: Folders */}
       <div className={`
-        absolute md:relative z-50 md:z-0 h-full
+        absolute lg:relative z-50 lg:z-0 h-full
         transition-transform duration-300 ease-in-out
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <FolderList 
           folders={allFoldersList} 
@@ -386,7 +386,7 @@ export default function TitanEmailModule() {
       
       {/* Center Panel: Email List */}
       <div className={`
-        flex-1 md:flex-none h-full w-full md:w-[320px] lg:w-[400px]
+        flex-1 md:flex-none h-full w-full md:w-[280px] lg:w-[320px] xl:w-[360px]
         ${selectedEmail ? 'hidden md:flex' : 'flex'}
       `}>
         <EmailList 

@@ -13,7 +13,7 @@ export default function EmailList({ folder, messages, isLoading, selectedEmail, 
       <div className="p-4 border-b border-white/5 space-y-3">
         <div className="flex items-center gap-3">
           {onMenuClick && (
-            <button onClick={onMenuClick} className="md:hidden text-slate-400 hover:text-white p-1">
+            <button onClick={onMenuClick} className="lg:hidden text-slate-400 hover:text-white p-1">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
