@@ -5892,6 +5892,7 @@ function PracticeAreasTab({ toast }) {
           </div>
         </Modal>
       )}
+    </>
   );
 }
 
@@ -6005,6 +6006,7 @@ function CustomFieldsTab({ toast }) {
           </div>
         </Modal>
       )}
+    </>
   );
 }
 
