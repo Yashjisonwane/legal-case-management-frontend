@@ -5818,6 +5818,18 @@ function PracticeAreasTab({ toast }) {
     }
   };
 
+  const handleDelete = async (area) => {
+    if (window.confirm(`Are you sure you want to delete practice area "${area.name}"?`)) {
+      try {
+        await api.practiceAreas.remove(area.id);
+        toast('Practice area deleted successfully', 'success');
+        loadAreas();
+      } catch (e) {
+        toast(e.message || 'Failed to delete practice area', 'error');
+      }
+    }
+  };
+
   return (
     <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
       <div className="flex justify-between items-center mb-6">
@@ -5840,7 +5852,10 @@ function PracticeAreasTab({ toast }) {
                 </div>
               </Td>
               <Td>
-                <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-practice-area', data: a } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-practice-area', data: a } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                  <button onClick={() => handleDelete(a)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                </div>
               </Td>
             </Tr>
           ))}
@@ -5886,6 +5901,18 @@ function CustomFieldsTab({ toast }) {
     }
   };
 
+  const handleDelete = async (field) => {
+    if (window.confirm(`Are you sure you want to delete custom field "${field.name}"?`)) {
+      try {
+        await api.customFields.remove(field.id);
+        toast('Custom field deleted successfully', 'success');
+        loadFields();
+      } catch (e) {
+        toast(e.message || 'Failed to delete custom field', 'error');
+      }
+    }
+  };
+
   return (
     <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
       <div className="flex justify-between items-center mb-6">
@@ -5909,7 +5936,10 @@ function CustomFieldsTab({ toast }) {
                 </div>
               </Td>
               <Td>
-                <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-custom-field', data: f } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-custom-field', data: f } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
+                  <button onClick={() => handleDelete(f)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                </div>
               </Td>
             </Tr>
           ))}
