@@ -5854,7 +5854,7 @@ function PracticeAreasTab({ toast }) {
         )}
       </Card>
 
-      {deleteTarget && (
+      {deleteTarget && createPortal(
         <Modal
           title="Delete Practice Area"
           onClose={() => setDeleteTarget(null)}
@@ -5890,7 +5890,8 @@ function PracticeAreasTab({ toast }) {
               </div>
             </div>
           </div>
-        </Modal>
+        </Modal>,
+        document.body
       )}
     </>
   );
@@ -5968,7 +5969,7 @@ function CustomFieldsTab({ toast }) {
         )}
       </Card>
 
-      {deleteTarget && (
+      {deleteTarget && createPortal(
         <Modal
           title="Delete Custom Field"
           onClose={() => setDeleteTarget(null)}
@@ -6004,7 +6005,8 @@ function CustomFieldsTab({ toast }) {
               </div>
             </div>
           </div>
-        </Modal>
+        </Modal>,
+        document.body
       )}
     </>
   );
