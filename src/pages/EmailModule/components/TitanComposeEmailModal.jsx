@@ -2,8 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import api, { API_BASE_URL } from '../../../services/api';
 import { useToast } from '../../../components/UI.jsx';
 
-export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, accountId = null }) {
+export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data = {}, user = {}, lookups = {}, accountId = null, titanAccounts = [] }) {
   const { toast } = useToast();
+  const [activeAccountId, setActiveAccountId] = useState(accountId);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveAccountId(accountId);
+    }
+  }, [isOpen, accountId]);
   // Fields
   const [toEmails, setToEmails] = useState([]);
   const [ccEmails, setCcEmails] = useState([]);
@@ -203,7 +210,7 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
       
       const payload = {
         id: draftIdRef.current,
-        accountId,
+        accountId: activeAccountId,
         subject,
         message_body: finalBodyText,
         to: toEmails,
@@ -222,7 +229,7 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
     }, 25000);
 
     return () => clearInterval(interval);
-  }, [isOpen, sending, toEmails, ccEmails, bccEmails, subject, accountId]);
+  }, [isOpen, sending, toEmails, ccEmails, bccEmails, subject, activeAccountId]);
 
   // Handle Selection updates
   const saveSelection = () => {
@@ -898,9 +905,9 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
       const isEdit = !!data?.id;
       let res;
       if (isEdit) {
-        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId, ...payload, id: data.id } });
+        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId: activeAccountId, ...payload, id: data.id } });
       } else {
-        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId, ...payload } });
+        res = await api.request('/titan-email/send', { method: 'POST', body: { accountId: activeAccountId, ...payload } });
       }
 
       if (res.success || res.data) {
@@ -1028,7 +1035,29 @@ export default function TitanComposeEmailModal({ isOpen, onClose, onSave, data =
           {/* From field */}
           <div className="flex flex-col sm:flex-row sm:items-center text-[13px] border-b border-white/5 pb-2">
             <span className="w-20 text-white/40 font-800 uppercase tracking-wider text-[11px] mb-1 sm:mb-0">From</span>
-            <span className="text-white/80 font-600 select-all">{user?.email || 'my-profile@firm.com'}</span>
+            {titanAccounts && titanAccounts.length > 1 ? (
+              <div className="relative inline-block">
+                <select
+                  disabled={sending}
+                  value={activeAccountId || ''}
+                  onChange={(e) => setActiveAccountId(parseInt(e.target.value, 10))}
+                  className="bg-[#1c2436] border border-white/10 rounded-lg px-2.5 py-1 text-[12px] text-white font-600 focus:outline-none focus:border-blue-500 cursor-pointer appearance-none pr-8"
+                >
+                  {titanAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.email_address}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-white/40">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M6 9l6 6 6-6" /></svg>
+                </div>
+              </div>
+            ) : (
+              <span className="text-white/80 font-600 select-all">
+                {titanAccounts.find(acc => acc.id === activeAccountId)?.email_address || user?.email || 'my-profile@firm.com'}
+              </span>
+            )}
           </div>
 
           {/* To field */}

@@ -429,6 +429,7 @@ export default function TitanEmailModule() {
           onSave={() => refresh()}
           data={composeData}
           accountId={selectedAccountId}
+          titanAccounts={titanAccounts}
         />
       )}
     </div>
