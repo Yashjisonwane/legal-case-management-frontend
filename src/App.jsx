@@ -26,6 +26,7 @@ import { MarketingDashboard, ReportsDashboard } from './pages/MarketingPages.jsx
 import { ClientDashboard, ClientCasesPage, ClientDocumentsPage, ClientBillingPage, ClientMessagesPage, ClientProfilePage } from './pages/ClientPages.jsx';
 
 import { SignDocument } from './components/SignDocument.jsx';
+import TitanEmailModule from './pages/EmailModule/TitanEmailModule.jsx';
 
 // ─────────────────────────────────────────────────────────
 //  LOGIN SCREEN
@@ -3838,6 +3839,7 @@ export default function App() {
           <Route path="court-forms" element={<AdminCourtFormsPage />} />
           <Route path="billing" element={<AdminBillingPage />} />
           <Route path="communications" element={<AdminEmailPage />} />
+          <Route path="titan-email" element={<TitanEmailModule />} />
           <Route path="vynius" element={<AdminAIPage />} />
           <Route path="marketing" element={<AdminMarketingPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
@@ -3859,6 +3861,7 @@ export default function App() {
           <Route path="court-forms" element={<LawyerCourtFormsPage />} />
           <Route path="billing" element={<LawyerBillingPage />} />
           <Route path="email" element={<LawyerEmailPage />} />
+          <Route path="titan-email" element={<TitanEmailModule />} />
           <Route path="vynius" element={<LawyerAIPage />} />
           <Route path="profile" element={<LawyerProfileWrapper />} />
           <Route path="settings" element={<LawyerSettingsPage />} />
