@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function EmailPreview({ email, onAction, onBack, threadMessages = [], currentFolder }) {
+export default function EmailPreview({ email, onAction, onBack, threadMessages = [], currentFolder, folders = [] }) {
   const [expandedIds, setExpandedIds] = useState(new Set());
 
   // Automatically expand the newest message in the thread
@@ -173,6 +173,29 @@ export default function EmailPreview({ email, onAction, onBack, threadMessages =
             >
               <span className="text-[14px]">{email.is_read ? '✉️' : '📖'}</span>
             </button>
+            <div className="relative group">
+              <button 
+                className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" 
+                title="Move to Folder"
+              >
+                📁
+              </button>
+              <div className="absolute right-0 top-9 w-44 bg-slate-950 border border-white/10 rounded-xl shadow-2xl py-1.5 hidden group-hover:block z-50 max-h-60 overflow-y-auto custom-scrollbar">
+                <p className="text-[10px] font-bold text-slate-500 uppercase px-3 py-1 border-b border-white/5 tracking-wider">Move to:</p>
+                {folders
+                  .filter(f => f.id !== 'starred' && f.id !== 'flagged' && f.id !== currentFolder && f.id !== email.folder)
+                  .map(f => (
+                    <button 
+                      key={f.id}
+                      onClick={() => onAction('move_to_folder', { emailObj: email, folderName: f.id })}
+                      className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 hover:text-white capitalize flex items-center gap-2 truncate"
+                    >
+                      <span>{f.icon || '📁'}</span>
+                      <span className="truncate">{f.label}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
             {!isTrash && !isArchive && (
               <button 
                 onClick={() => onAction('archive', email)} 

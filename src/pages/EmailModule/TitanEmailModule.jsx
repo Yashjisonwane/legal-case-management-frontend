@@ -17,6 +17,7 @@ export default function TitanEmailModule() {
     { id: 'starred', label: 'Starred', icon: '⭐' },
     { id: 'flagged', label: 'Flagged', icon: '🚩' },
   ]);
+  const [customFolders, setCustomFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [messages, setMessages] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState(null);
@@ -28,6 +29,7 @@ export default function TitanEmailModule() {
   const [folderCounts, setFolderCounts] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [threadMessages, setThreadMessages] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
   const { toast } = useToast();
 
   // ── Fetch Messages ──────────────────────────────────────
@@ -58,6 +60,16 @@ export default function TitanEmailModule() {
     }
   }, []);
 
+  // ── Fetch Custom Folders ────────────────────────────────
+  const fetchCustomFolders = useCallback(async () => {
+    try {
+      const res = await api.request('/titan-email/custom-folders');
+      if (res.data) setCustomFolders(res.data);
+    } catch (err) {
+      // Silently fail
+    }
+  }, []);
+
   // ── Fetch Thread ────────────────────────────────────────
   const fetchThread = useCallback(async (emailId) => {
     try {
@@ -72,15 +84,49 @@ export default function TitanEmailModule() {
     }
   }, []);
 
-  useEffect(() => {
+  // ── Refresh helper ──────────────────────────────────────
+  const refresh = useCallback(() => {
     fetchMessages(selectedFolder, searchQuery);
     fetchFolderCounts();
+    fetchCustomFolders();
+  }, [selectedFolder, searchQuery, fetchMessages, fetchFolderCounts, fetchCustomFolders]);
+
+  useEffect(() => {
+    refresh();
     const interval = setInterval(() => {
-      fetchMessages(selectedFolder, searchQuery);
-      fetchFolderCounts();
+      refresh();
     }, 120000);
     return () => clearInterval(interval);
-  }, [selectedFolder, searchQuery, fetchMessages, fetchFolderCounts]);
+  }, [selectedFolder, searchQuery, refresh]);
+
+  // ── Manual Sync Action ──────────────────────────────────
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true);
+      await api.request('/titan-email/sync', { method: 'POST' });
+      toast('Sync complete! New messages downloaded.', 'success');
+      refresh();
+    } catch (err) {
+      toast('Sync failed. Please check your credentials.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // ── Create Custom Folder Callback ───────────────────────
+  const handleCreateCustomFolder = (folderName) => {
+    const cleanName = folderName.trim().toLowerCase();
+    if (!cleanName) return;
+    const exists = folders.some(f => f.id === cleanName) || customFolders.includes(cleanName);
+    if (exists) {
+      setSelectedFolder(cleanName);
+      return;
+    }
+    // Add locally immediately so it lists in the sidebar
+    setCustomFolders(prev => [...prev, cleanName]);
+    setSelectedFolder(cleanName);
+    toast(`Custom folder "${folderName}" created`, 'success');
+  };
 
   // ── Auto Mark Read on Select ────────────────────────────
   const handleSelectEmail = useCallback(async (email) => {
@@ -104,12 +150,6 @@ export default function TitanEmailModule() {
     if (email) fetchThread(email.id);
   }, [fetchThread, fetchFolderCounts]);
 
-  // ── Refresh helper ──────────────────────────────────────
-  const refresh = useCallback(() => {
-    fetchMessages(selectedFolder, searchQuery);
-    fetchFolderCounts();
-  }, [selectedFolder, searchQuery, fetchMessages, fetchFolderCounts]);
-
   // ── Handle Single Actions ───────────────────────────────
   const handleAction = async (action, email) => {
     try {
@@ -126,6 +166,12 @@ export default function TitanEmailModule() {
       } else if (action === 'archive') {
         await api.request(`/titan-email/messages/${email.id}/move`, { method: 'PUT', body: { folder: 'archive' } });
         toast('Message archived', 'success');
+        setSelectedEmail(null);
+        refresh();
+      } else if (action === 'move_to_folder') {
+        const { emailObj, folderName } = email;
+        await api.request(`/titan-email/messages/${emailObj.id}/move`, { method: 'PUT', body: { folder: folderName } });
+        toast(`Message moved to ${folderName}`, 'success');
         setSelectedEmail(null);
         refresh();
       } else if (action === 'star') {
@@ -200,6 +246,17 @@ export default function TitanEmailModule() {
     }
   };
 
+  // Combine standard and custom folders
+  const allFoldersList = [
+    ...folders,
+    ...customFolders.map(folderName => ({
+      id: folderName,
+      label: folderName.charAt(0).toUpperCase() + folderName.slice(1),
+      icon: '📁',
+      isCustom: true,
+    })),
+  ];
+
   return (
     <div className="relative flex h-[calc(100vh-80px)] bg-slate-900/50 text-white overflow-hidden rounded-xl border border-white/10 shadow-2xl m-2 sm:m-4">
       
@@ -218,11 +275,14 @@ export default function TitanEmailModule() {
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <FolderList 
-          folders={folders} 
+          folders={allFoldersList} 
           selectedFolder={selectedFolder} 
           onSelect={(f) => { setSelectedFolder(f); setSelectedIds(new Set()); setIsSidebarOpen(false); }} 
           onCompose={() => { setComposeData(null); setIsComposeOpen(true); setIsSidebarOpen(false); }}
           folderCounts={folderCounts}
+          isSyncing={isSyncing}
+          onSync={handleSync}
+          onCreateCustomFolder={handleCreateCustomFolder}
         />
       </div>
       
@@ -259,6 +319,7 @@ export default function TitanEmailModule() {
           onBack={() => setSelectedEmail(null)}
           threadMessages={threadMessages}
           currentFolder={selectedFolder}
+          folders={allFoldersList}
         />
       </div>
 
