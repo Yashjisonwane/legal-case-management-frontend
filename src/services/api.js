@@ -440,7 +440,16 @@ export default {
     // Templates
     listTemplates: (params) => request(`/court-forms/templates${buildQuery(params)}`),
     getTemplate: (id) => request(`/court-forms/templates/${id}`),
+    uploadTemplate: (formData) => {
+      const token = localStorage.getItem('vktori_token');
+      return fetch(`${API_BASE_URL}/court-forms/templates/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      }).then(r => r.json());
+    },
     saveMappings: (id, mappings) => request(`/court-forms/templates/${id}/mappings`, { method: 'POST', body: { mappings } }),
+    deleteTemplate: (id) => request(`/court-forms/templates/${id}`, { method: 'DELETE' }),
     // Prefill
     prefill: (matter_id) => request(`/court-forms/prefill?matter_id=${matter_id}`),
     // Drafts

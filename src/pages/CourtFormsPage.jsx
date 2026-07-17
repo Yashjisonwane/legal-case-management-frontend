@@ -178,6 +178,41 @@ function PracticeAreaDropdown({ practiceAreas, value, onChange }) {
     </div>
   );
 }
+const cleanPdfFieldName = (name) => {
+  if (!name) return '';
+  // Split by real dots (not escaped ones)
+  const parts = name.split('.');
+  // Find best meaningful segment (skip single chars, 'b', 'd', etc.)
+  let bestPart = '';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    let seg = parts[i].replace(/\[\d+\]/g, '');
+    seg = seg.replace(/^doesdoesnot\d*$/, '');
+    seg = seg.replace(/^hashasno\w*$/, '');
+    seg = seg.replace(/^plantifforpet\w*$/, '');
+    seg = seg.replace(/^relationship\d*$/, '');
+    seg = seg.replace(/^iam\d*$/, '');
+    if (seg.length > 2) { bestPart = seg; break; }
+  }
+  if (!bestPart) bestPart = parts[parts.length - 1].replace(/\[\d+\]/g, '');
+  
+  let clean = bestPart;
+  clean = clean.replace(/_(ft|cb|rt|ft_)$/g, '');
+  clean = clean.replace(/([A-Z])/g, ' $1').trim();
+  // Known overrides
+  if (clean.toLowerCase().includes('galname') || clean.toLowerCase().includes('gal info')) return 'GAL Info';
+  if (clean.toLowerCase().includes('gdn')) return 'Guardian Name';
+  if (clean.toLowerCase().includes('minorname')) return 'Minor Name';
+  if (clean.toLowerCase().includes('minordob')) return 'Minor DOB';
+  if (clean.toLowerCase().includes('appl')) return 'Applicant Name';
+  if (clean.toLowerCase().includes('explainInadeq') || clean.toLowerCase().includes('explain inadeq')) return 'Explain Inadequacy';
+  if (clean.toLowerCase().includes('gdncnsrvtr')) return 'Guardian/Conservator Info';
+  if (clean.toLowerCase().includes('conflic')) return 'Conflict Description';
+  if (clean.toLowerCase().includes('specifyfam')) return 'Specify Family Relationship';
+  if (clean.toLowerCase().includes('specifynonfam')) return 'Specify Non-Family Relationship';
+  if (clean.toLowerCase().includes('att4') || clean.toLowerCase().includes('att6') || clean.toLowerCase().includes('att9')) return 'Attachment';
+  return clean || name;
+};
+
 export default function CourtFormsPage({ toast, role = 'admin' }) {
   const [tab,            setTab]            = useState('library');
   const [templates,      setTemplates]      = useState([]);
@@ -237,8 +272,17 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
   const openWizard = async (template, draft = null) => {
     setPrefillData({});
     setFormValues(draft?.form_data || {});
-    setWizard({ template, matter_id: draft?.matter?.id || '', draft_id: draft?.id || null });
     setWizardStep(draft ? 2 : 1);
+    
+    let fullTemplate = template;
+    try {
+      const res = await api.courtForms.getTemplate(template.id);
+      if (res && res.data) fullTemplate = res.data;
+    } catch (e) {
+      console.error('Failed to fetch full template detail:', e);
+    }
+    
+    setWizard({ template: fullTemplate, matter_id: draft?.matter?.id || '', draft_id: draft?.id || null });
     if (draft?.matter?.id) {
       try { const r = await api.courtForms.prefill(draft.matter.id); setPrefillData(r.data || {}); } catch {}
     }
@@ -500,7 +544,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
           )}
 
           {/* ── MAPPING ── */}
-          {tab === 'mapping' && <MappingTab templates={templates} toast={toast} />}
+          {tab === 'mapping' && <MappingTab templates={templates} toast={toast} onRefreshTemplates={fetchAll} />}
         </>
       )}
 
@@ -705,6 +749,60 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                         ))}
                       </div>
                     </div>
+                    
+                    {/* Section 6: Form Specific Details (Custom Fields) */}
+                    {(() => {
+                      const STANDARD_KEYS = [
+                        'case_title', 'case_number', 'plaintiff', 'defendant', 'court_name', 'judge_name',
+                        'attorney_name', 'firm_name', 'client_name', 'client_address', 'client_phone', 'client_email',
+                        'filing_date', 'hearing_date', 'firm_address', 'firm_phone', 'court_address', 'matter_number',
+                        'attorney_email'
+                      ];
+                      const mappings = wizard?.template?.mappings || [];
+                      const customFieldMappings = mappings.filter(
+                        m => m.system_field_path && !STANDARD_KEYS.includes(m.system_field_path)
+                      );
+                      const uniqueCustomFields = [...new Set(customFieldMappings.map(m => m.system_field_path))];
+
+                      if (uniqueCustomFields.length === 0) return null;
+
+                      return (
+                        <div style={{ marginTop: '12px' }}>
+                          <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
+                            📝 Form Specific Details (Custom Fields)
+                          </h3>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                            {uniqueCustomFields.map(cfName => {
+                              const mapping = customFieldMappings.find(m => m.system_field_path === cfName);
+                              const isCheckbox = mapping?.pdf_field_name?.toLowerCase()?.includes('_cb');
+
+                              if (isCheckbox) {
+                                return (
+                                  <div key={cfName} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>
+                                    <input type="checkbox" checked={!!formValues[cfName]} id={cfName}
+                                      onChange={e => setFormValues(p => ({ ...p, [cfName]: e.target.checked }))}
+                                      style={{ width: 18, height: 18, accentColor: '#10b981', cursor: 'pointer' }}/>
+                                    <label htmlFor={cfName} style={{ fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>{cfName}</label>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={cfName}>
+                                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{cfName}</label>
+                                  <div style={{ position: 'relative' }}>
+                                    <input type="text" value={formValues[cfName] || ''}
+                                      onChange={e => setFormValues(p => ({ ...p, [cfName]: e.target.value }))}
+                                      style={{ ...sx.input, paddingRight: prefillData[cfName] ? 50 : 14, borderColor: prefillData[cfName] ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.1)' }}/>
+                                    {prefillData[cfName] && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 9, fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.15)', padding: '2px 6px', borderRadius: 4 }}>AUTO</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
@@ -821,16 +919,34 @@ function TemplateDropdown({ templates, value, onChange }) {
 }
 
 // ─── Mapping Tab ──────────────────────────────────────────────
-function MappingTab({ templates, toast }) {
+function MappingTab({ templates, toast, onRefreshTemplates }) {
   const [sel,     setSel]     = useState('');
   const [detail,  setDetail]  = useState(null);
   const [maps,    setMaps]    = useState([]);
   const [saving,  setSaving]  = useState(false);
 
+  // Upload state variables
+  const [uploadNum, setUploadNum] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadPracticeArea, setUploadPracticeArea] = useState('');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     if (!sel) return;
     api.courtForms.getTemplate(sel).then(r => { setDetail(r.data); setMaps(r.data?.mappings || []); });
   }, [sel]);
+
+  const [customFields, setCustomFields] = useState([]);
+
+  useEffect(() => {
+    api.customFields.list().then(res => {
+      if (res && res.data) setCustomFields(res.data);
+    }).catch(err => console.error('Failed to load custom fields:', err));
+  }, [templates]);
+
+
 
   const SYSTEM_FIELDS_MAP = [
     { key: 'case_title', label: 'Case Title' }, { key: 'case_number', label: 'Case Number' },
@@ -843,72 +959,268 @@ function MappingTab({ templates, toast }) {
     { key: 'firm_address', label: 'Firm Address' }, { key: 'firm_phone', label: 'Firm Phone' },
     { key: 'court_address', label: 'Court Address' }, { key: 'matter_number', label: 'Matter Number' },
     { key: 'attorney_email', label: 'Attorney Email' },
+    ...customFields.map(cf => ({ key: cf.name, label: `${cf.name} (Custom Field)` }))
   ];
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadFile(file);
+
+    // Parse file name (strip extension)
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+
+    // Try to split by dash/separator (e.g. "CIV-010 - Request for Dismissal")
+    const parts = nameWithoutExt.split(/[-_–—]/);
+    let detectedNum = '';
+    let detectedTitle = '';
+
+    if (parts.length > 1) {
+      detectedNum = parts[0].trim();
+      detectedTitle = parts.slice(1).join('-').trim();
+    } else {
+      // Just one part
+      detectedNum = nameWithoutExt.trim();
+    }
+
+    // Standardize Form Number (e.g., "civ010" -> "CIV-010" or "CIV110" -> "CIV-110")
+    const numRegex = /^([a-zA-Z]{2,4})[-_]?(\d{3})$/;
+    const match = detectedNum.replace(/\s+/g, '').match(numRegex);
+    if (match) {
+      detectedNum = `${match[1].toUpperCase()}-${match[2]}`;
+    }
+
+    // Clean up title
+    if (detectedTitle.toUpperCase() === detectedNum) {
+      detectedTitle = '';
+    } else {
+      detectedTitle = detectedTitle.replace(/\s+/g, ' ');
+    }
+
+    // Smart prefill for standard California Judicial Council forms if filename is just the code
+    const JC_FORM_TITLES = {
+      'CIV-010': 'Application for Complex Case Designation',
+      'CIV-110': 'Request for Dismissal',
+      'CIV-120': 'Notice of Entry of Dismissal',
+      'CM-010': 'Civil Case Cover Sheet',
+      'CM-110': 'Case Management Statement',
+      'POS-010': 'Proof of Service of Summons',
+      'POS-030': 'Proof of Service by First-Class Mail',
+      'MC-025': 'Attachment',
+      'SUBP-010': 'Civil Subpoena Duces Tecum',
+      'FW-001': 'Request to Waive Court Fees'
+    };
+
+    const JC_PRACTICE_AREAS = {
+      'CIV-010': 'Civil Litigation',
+      'CIV-110': 'Civil Litigation',
+      'CIV-120': 'Civil Litigation',
+      'CM-010': 'Civil Litigation',
+      'CM-110': 'Civil Litigation',
+      'POS-010': 'Civil Litigation',
+      'POS-030': 'Civil Litigation',
+      'MC-025': 'General Practice',
+      'SUBP-010': 'Civil Litigation',
+      'FW-001': 'General Practice'
+    };
+
+    if (!detectedTitle && JC_FORM_TITLES[detectedNum]) {
+      detectedTitle = JC_FORM_TITLES[detectedNum];
+    }
+
+    const detectedPA = JC_PRACTICE_AREAS[detectedNum] || 'Civil Litigation';
+
+    if (detectedNum) setUploadNum(detectedNum);
+    if (detectedTitle) setUploadTitle(detectedTitle);
+    if (detectedPA) setUploadPracticeArea(detectedPA);
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!sel) return;
+    if (!window.confirm(`Are you sure you want to delete form template ${detail?.form_number}? This will delete all its mappings and saved drafts.`)) {
+      return;
+    }
+    try {
+      await api.courtForms.deleteTemplate(sel);
+      toast?.('Template deleted successfully!', 'success');
+      setSel('');
+      setDetail(null);
+      setMaps([]);
+      if (onRefreshTemplates) await onRefreshTemplates();
+    } catch (err) {
+      toast?.(err.message || 'Error deleting template', 'error');
+    }
+  };
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!uploadNum.trim() || !uploadTitle.trim() || !uploadFile) {
+      toast?.('Please enter Form Number, Title, and select a PDF file', 'error');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('form_number', uploadNum.trim());
+      fd.append('title', uploadTitle.trim());
+      fd.append('practice_area', uploadPracticeArea.trim());
+      fd.append('file', uploadFile);
+
+      const res = await api.courtForms.uploadTemplate(fd);
+      if (res && res.data) {
+        toast?.('Form uploaded and interactive fields parsed successfully!', 'success');
+        setUploadNum('');
+        setUploadTitle('');
+        setUploadPracticeArea('');
+        setUploadFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (onRefreshTemplates) await onRefreshTemplates();
+        setSel(String(res.data.id));
+      } else {
+        toast?.(res?.error || 'Failed to upload template', 'error');
+      }
+    } catch (err) {
+      toast?.(err.message || 'Error uploading file', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div>
-      <p style={{ color: '#8a94a6', fontSize: 13, marginBottom: 24 }}>
-        Map system database fields to PDF form input fields. Configured mappings are used during auto-prefill.
-      </p>
-      <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Template</label>
-        <TemplateDropdown templates={templates} value={sel} onChange={setSel} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      
+      {/* ─── UPLOAD DYNAMIC PDF SECTION ─── */}
+      <div style={{ background: 'rgba(56,189,248,0.02)', border: '1px solid rgba(56,189,248,0.12)', borderRadius: 16, padding: '22px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(56,189,248,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#38bdf8" strokeWidth={2}><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          </div>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#fff', margin: 0 }}>Upload & Auto-Parse Master PDF</h3>
+        </div>
+        <p style={{ color: '#8a94a6', fontSize: 12.5, margin: '0 0 18px 0', lineHeight: 1.5 }}>
+          Upload a fillable Judicial Council PDF form. The system will read it using `pdf-lib`, extract all input box/checkbox keys, and let you map them.
+        </p>
+
+        <form onSubmit={handleUpload} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+          {/* 1. File Input (Top Full Width) */}
+          <div style={{ gridColumn: 'span 3' }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Select Fillable PDF *</label>
+            <input type="file" accept=".pdf" ref={fileInputRef} onChange={handleFileChange}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#8a94a6', outline: 'none' }}/>
+          </div>
+
+          {/* 2. Form Number */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Form Number *</label>
+            <input type="text" placeholder="E.g., CIV-010" value={uploadNum} onChange={e => setUploadNum(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none' }}/>
+          </div>
+
+          {/* 3. Form Title */}
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Form Title *</label>
+            <input type="text" placeholder="E.g., Application for Complex Case Designation" value={uploadTitle} onChange={e => setUploadTitle(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none' }}/>
+          </div>
+
+          {/* 4. Practice Area */}
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Practice Area</label>
+            <input type="text" placeholder="E.g., Civil Litigation" value={uploadPracticeArea} onChange={e => setUploadPracticeArea(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none' }}/>
+          </div>
+
+          {/* 5. Upload Button */}
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button type="submit" disabled={uploading}
+              style={{ width: '100%', height: '40px', background: '#0057c7', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, transition: 'background .2s' }}
+              onMouseEnter={e => { if (!uploading) e.currentTarget.style.background = '#0066e0'; }}
+              onMouseLeave={e => { if (!uploading) e.currentTarget.style.background = '#0057c7'; }}>
+              {uploading ? 'Processing...' : 'Upload & Map'}
+            </button>
+          </div>
+        </form>
       </div>
 
-      {sel && (
-        <div style={{ background: '#0a1628', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
-            <div>
-              <p style={{ fontWeight: 700, color: '#fff', margin: 0, fontSize: 14 }}>Field Mappings</p>
-              <p style={{ fontSize: 12, color: '#8a94a6', margin: 0, marginTop: 2 }}>{detail?.form_number} — {maps.length} mapping{maps.length !== 1 ? 's' : ''} configured</p>
-            </div>
-            <button onClick={() => setMaps(p => [...p, { pdf_field_name: '', system_field_path: '' }])}
-              style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', background: 'rgba(0,87,199,0.2)', color: '#38bdf8', border: '1px solid rgba(0,87,199,0.3)', borderRadius: 8, cursor: 'pointer' }}>
-              + Add Mapping
-            </button>
-          </div>
-
-          {maps.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#8a94a6', fontSize: 13 }}>
-              No mappings yet. Click "Add Mapping" to define field connections.
-            </div>
-          ) : (
-            <div>
-              {maps.map((m, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <input placeholder="PDF field name (from form)" value={m.pdf_field_name}
-                    onChange={e => setMaps(p => p.map((x, j) => j === i ? { ...x, pdf_field_name: e.target.value } : x))}
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none' }}/>
-                  <span style={{ color: '#8a94a6', fontSize: 18, flexShrink: 0 }}>→</span>
-                  <select value={m.system_field_path}
-                    onChange={e => setMaps(p => p.map((x, j) => j === i ? { ...x, system_field_path: e.target.value } : x))}
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none', cursor: 'pointer' }}>
-                    <option value="">— System Field —</option>
-                    {SYSTEM_FIELDS_MAP.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                  </select>
-                  <button onClick={() => setMaps(p => p.filter((_, j) => j !== i))}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a94a6', padding: 4, flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
-                    onMouseLeave={e => e.currentTarget.style.color = '#8a94a6'}>
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18L18 6M6 6l12 12"/></svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-            <button onClick={async () => {
-              setSaving(true);
-              try { await api.courtForms.saveMappings(sel, maps.filter(m => m.pdf_field_name && m.system_field_path)); toast?.('Mappings saved', 'success'); }
-              catch { toast?.('Failed to save', 'error'); } finally { setSaving(false); }
-            }} disabled={saving}
-              style={{ padding: '10px 22px', background: '#0057c7', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Saving…' : 'Save Mappings'}
-            </button>
-          </div>
+      {/* ─── SELECT & MAP FIELDS SECTION ─── */}
+      <div>
+        <p style={{ color: '#8a94a6', fontSize: 13, marginBottom: 24 }}>
+          Choose any uploaded form template to configure database bindings. Form fields mapped to system fields will pre-fill automatically for lawyers.
+        </p>
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Template</label>
+          <TemplateDropdown templates={templates} value={sel} onChange={setSel} />
         </div>
-      )}
+
+        {sel && (
+          <div style={{ background: '#0a1628', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
+              <div>
+                <p style={{ fontWeight: 700, color: '#fff', margin: 0, fontSize: 14 }}>Field Mappings</p>
+                <p style={{ fontSize: 12, color: '#8a94a6', margin: 0, marginTop: 2 }}>{detail?.form_number} — {maps.length} mapping{maps.length !== 1 ? 's' : ''} configured</p>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={handleDeleteTemplate}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.18)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}>
+                  Delete Template
+                </button>
+                <button onClick={() => setMaps(p => [...p, { pdf_field_name: '', system_field_path: '' }])}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '7px 14px', background: 'rgba(0,87,199,0.2)', color: '#38bdf8', border: '1px solid rgba(0,87,199,0.3)', borderRadius: 8, cursor: 'pointer' }}>
+                  + Add Mapping
+                </button>
+              </div>
+            </div>
+
+            {maps.length === 0 ? (
+              <div style={{ padding: '48px', textAlign: 'center', color: '#8a94a6', fontSize: 13 }}>
+                No mappings yet. Click "Add Mapping" to define field connections.
+              </div>
+            ) : (
+              <div>
+                {maps.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {cleanPdfFieldName(m.pdf_field_name)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#8a94a6', fontFamily: 'monospace', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: 2 }} title={m.pdf_field_name}>
+                        {m.pdf_field_name}
+                      </div>
+                    </div>
+                    <span style={{ color: '#8a94a6', fontSize: 18, flexShrink: 0 }}>→</span>
+                    <select value={m.system_field_path}
+                      onChange={e => setMaps(p => p.map((x, j) => j === i ? { ...x, system_field_path: e.target.value } : x))}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, color: '#fff', outline: 'none', cursor: 'pointer' }}>
+                      <option value="" style={{ color: '#000' }}>— System Field —</option>
+                      {SYSTEM_FIELDS_MAP.map(f => <option key={f.key} value={f.key} style={{ color: '#000' }}>{f.label}</option>)}
+                    </select>
+                    <button onClick={() => setMaps(p => p.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a94a6', padding: 4, flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#8a94a6'}>
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+              <button onClick={async () => {
+                setSaving(true);
+                try { await api.courtForms.saveMappings(sel, maps.filter(m => m.pdf_field_name && m.system_field_path)); toast?.('Mappings saved', 'success'); }
+                catch { toast?.('Failed to save', 'error'); } finally { setSaving(false); }
+              }} disabled={saving}
+                style={{ padding: '10px 22px', background: '#0057c7', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : 'Save Mappings'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
