@@ -188,7 +188,7 @@ export function Td({ children, className = '' }) {
 // ── Tabs ──────────────────────────────────────────────────
 export function Tabs({ tabs, active, onChange }) {
   return (
-    <div className="flex border-b border-white/10 mb-8 overflow-x-auto no-scrollbar scroll-smooth">
+    <div className="flex flex-nowrap w-full max-w-full border-b border-white/10 mb-8 overflow-x-auto no-scrollbar scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
       {tabs.map(tab => (
         <button key={tab} onClick={() => onChange(tab)}
           className={`tab-btn whitespace-nowrap flex-shrink-0 ${active === tab ? 'active' : ''}`}>
