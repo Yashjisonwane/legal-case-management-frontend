@@ -103,7 +103,7 @@ export default function EmailPreview({ email, onAction, onBack, threadMessages =
     <div className="flex-1 flex flex-col bg-slate-900/60 overflow-hidden relative w-full h-full">
       {/* Top Action Bar */}
       <div className="p-4 border-b border-white/5 flex flex-col gap-3 sm:gap-4 flex-shrink-0 bg-slate-950/20">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {onBack && (
               <button onClick={onBack} className="md:hidden text-slate-400 hover:text-white p-1 -ml-2" title="Back">
@@ -112,13 +112,13 @@ export default function EmailPreview({ email, onAction, onBack, threadMessages =
                 </svg>
               </button>
             )}
-            <h1 className="text-lg sm:text-xl font-bold text-white leading-tight break-words truncate">
+            <h1 className="text-lg sm:text-xl font-bold text-white leading-tight break-words">
               {email.subject || '(No Subject)'}
             </h1>
           </div>
 
           {/* Quick Actions (Reply, Reply All, Forward, Star, Flag, Archive, Delete/Restore) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button 
               onClick={() => onAction('reply', email)} 
               className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" 
