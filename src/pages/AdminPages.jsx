@@ -5788,6 +5788,7 @@ export function UsersPage({ toast, openModal, user }) {
 // ─────────────────────────────────────────────────────────
 function PracticeAreasTab({ toast }) {
   const [areas, setAreas] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   
   const [loading, setLoading] = useState(true);
   const isFirstLoad = useRef(true);
@@ -5818,18 +5819,6 @@ function PracticeAreasTab({ toast }) {
     }
   };
 
-  const handleDelete = async (area) => {
-    if (window.confirm(`Are you sure you want to delete practice area "${area.name}"?`)) {
-      try {
-        await api.practiceAreas.remove(area.id);
-        toast('Practice area deleted successfully', 'success');
-        loadAreas();
-      } catch (e) {
-        toast(e.message || 'Failed to delete practice area', 'error');
-      }
-    }
-  };
-
   return (
     <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
       <div className="flex justify-between items-center mb-6">
@@ -5854,13 +5843,45 @@ function PracticeAreasTab({ toast }) {
               <Td>
                 <div className="flex items-center gap-4">
                   <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-practice-area', data: a } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
-                  <button onClick={() => handleDelete(a)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                  <button onClick={() => setDeleteTarget(a)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
                 </div>
               </Td>
             </Tr>
           ))}
           {areas.length === 0 && <Tr><Td colSpan={3} className="text-center text-[#8a94a6] py-6 text-[12px]">No practice areas configured.</Td></Tr>}
         </Table>
+      )}
+
+      {deleteTarget && (
+        <Modal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          title="Delete Practice Area"
+          confirmText="Delete"
+          onConfirm={async () => {
+            try {
+              await api.practiceAreas.remove(deleteTarget.id);
+              toast('Practice area deleted successfully', 'success');
+              loadAreas();
+              setDeleteTarget(null);
+            } catch (e) {
+              toast(e.message || 'Failed to delete practice area', 'error');
+            }
+          }}
+          confirmButtonClass="btn-danger"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
+              <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-[13px] text-red-200 font-700">Are you sure you want to delete practice area "{deleteTarget.name}"?</p>
+                <p className="text-[12px] text-red-300/70 mt-1">This action cannot be undone and will permanently remove this practice area.</p>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
     </Card>
   );
@@ -5871,6 +5892,7 @@ function PracticeAreasTab({ toast }) {
 // ─────────────────────────────────────────────────────────
 function CustomFieldsTab({ toast }) {
   const [fields, setFields] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   
   const [loading, setLoading] = useState(true);
   const isFirstLoad = useRef(true);
@@ -5901,18 +5923,6 @@ function CustomFieldsTab({ toast }) {
     }
   };
 
-  const handleDelete = async (field) => {
-    if (window.confirm(`Are you sure you want to delete custom field "${field.name}"?`)) {
-      try {
-        await api.customFields.remove(field.id);
-        toast('Custom field deleted successfully', 'success');
-        loadFields();
-      } catch (e) {
-        toast(e.message || 'Failed to delete custom field', 'error');
-      }
-    }
-  };
-
   return (
     <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl rounded-[2.5rem] p-8">
       <div className="flex justify-between items-center mb-6">
@@ -5938,13 +5948,45 @@ function CustomFieldsTab({ toast }) {
               <Td>
                 <div className="flex items-center gap-4">
                   <button onClick={() => window.dispatchEvent(new CustomEvent('vktori:open-modal', { detail: { type: 'edit-custom-field', data: f } }))} className="text-[#38bdf8] text-[11px] font-900 uppercase hover:underline">Edit</button>
-                  <button onClick={() => handleDelete(f)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
+                  <button onClick={() => setDeleteTarget(f)} className="text-red-500 text-[11px] font-900 uppercase hover:underline">Delete</button>
                 </div>
               </Td>
             </Tr>
           ))}
           {fields.length === 0 && <Tr><Td colSpan={4} className="text-center text-[#8a94a6] py-6 text-[12px]">No custom fields configured.</Td></Tr>}
         </Table>
+      )}
+
+      {deleteTarget && (
+        <Modal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          title="Delete Custom Field"
+          confirmText="Delete"
+          onConfirm={async () => {
+            try {
+              await api.customFields.remove(deleteTarget.id);
+              toast('Custom field deleted successfully', 'success');
+              loadFields();
+              setDeleteTarget(null);
+            } catch (e) {
+              toast(e.message || 'Failed to delete custom field', 'error');
+            }
+          }}
+          confirmButtonClass="btn-danger"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3">
+              <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-[13px] text-red-200 font-700">Are you sure you want to delete custom field "{deleteTarget.name}"?</p>
+                <p className="text-[12px] text-red-300/70 mt-1">This action cannot be undone and will permanently remove this custom field definition.</p>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
     </Card>
   );
