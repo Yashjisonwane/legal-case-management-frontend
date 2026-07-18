@@ -22,6 +22,7 @@ const NAV_ICONS = {
   profile: <svg className="w-[20px] h-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>,
   messages: <svg className="w-[20px] h-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
   courtforms: <svg className="w-[20px] h-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6M9 16h4" /></svg>,
+  integrations: <svg className="w-[20px] h-[20px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>,
 };
 
 const NAV_BY_ROLE = {
@@ -45,6 +46,7 @@ const NAV_BY_ROLE = {
     { id: 'reports', label: 'Reports', icon: 'reports', path: '/admin/reports' },
     { section: 'System' },
     { id: 'users', label: 'Users', icon: 'users', path: '/admin/users' },
+    { id: 'integrations', label: 'Integrations', icon: 'integrations', path: '/admin/integrations' },
     { id: 'settings', label: 'Settings', icon: 'settings', path: '/admin/settings' },
   ],
   lawyer: [
@@ -61,6 +63,7 @@ const NAV_BY_ROLE = {
     { id: 'email', label: 'Email', icon: 'email', path: '/lawyer/email' },
     { id: 'titan-email', label: 'Email', icon: 'titanemail', path: '/lawyer/titan-email' },
     { id: 'ai', label: 'VyNius', icon: 'ai', path: '/lawyer/vynius' },
+    { id: 'integrations', label: 'Integrations', icon: 'integrations', path: '/lawyer/integrations' },
     { section: 'Account' },
     { id: 'l-profile', label: 'My Profile', icon: 'profile', path: '/lawyer/profile' },
   ],

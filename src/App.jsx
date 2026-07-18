@@ -11,7 +11,7 @@ import OutlookEventComposer from './components/OutlookEventComposer.jsx';
 import EmailComposeModal from './components/EmailComposeModal.jsx';
 
 // Admin Pages
-import { AdminDashboard, ClientsPage, ClientDetailPage, CasesPage, CaseDetailPage, CalendarPage, DocumentsPage, BillingPage, EmailPage, AIPage, UsersPage, SettingsPage, TemplateLibrary } from './pages/AdminPages.jsx';
+import { AdminDashboard, ClientsPage, ClientDetailPage, CasesPage, CaseDetailPage, CalendarPage, DocumentsPage, BillingPage, EmailPage, AIPage, UsersPage, SettingsPage, IntegrationsPage, TemplateLibrary } from './pages/AdminPages.jsx';
 import ActivitiesPage from './pages/ActivitiesPage.jsx';
 import CourtFormsPage from './pages/CourtFormsPage.jsx';
 
@@ -3507,6 +3507,7 @@ function AdminAIPage() { const ctx = useOutletContext(); return <AIPage         
 function AdminMarketingPage() { const ctx = useOutletContext(); return <MarketingDashboard {...ctx} />; }
 function AdminReportsPage() { const ctx = useOutletContext(); return <ReportsDashboard  {...ctx} />; }
 function AdminUsersPage() { const ctx = useOutletContext(); return <UsersPage         {...ctx} />; }
+function AdminIntegrationsPage() { const ctx = useOutletContext(); return <IntegrationsPage  {...ctx} />; }
 function AdminSettingsPage() { const ctx = useOutletContext(); return <SettingsPage      {...ctx} />; }
 function AdminCourtFormsPage() { const ctx = useOutletContext(); return <CourtFormsPage {...ctx} role="admin" />; }
 
@@ -3520,6 +3521,7 @@ function LawyerDocumentsPage() { const ctx = useOutletContext(); return <Documen
 function LawyerBillingPage() { const ctx = useOutletContext(); return <BillingPage       {...ctx} />; }
 function LawyerEmailPage() { const ctx = useOutletContext(); return <EmailPage         {...ctx} />; }
 function LawyerAIPage() { const ctx = useOutletContext(); return <AIPage            {...ctx} />; }
+function LawyerIntegrationsPage() { const ctx = useOutletContext(); return <IntegrationsPage  {...ctx} />; }
 function LawyerSettingsPage() { const ctx = useOutletContext(); return <LawyerProfilePage {...ctx} />; }
 function LawyerProfileWrapper() { const ctx = useOutletContext(); return <LawyerProfilePage {...ctx} />; }
 function LawyerCourtFormsPage() { const ctx = useOutletContext(); return <CourtFormsPage {...ctx} role="lawyer" />; }
@@ -3844,6 +3846,7 @@ export default function App() {
           <Route path="marketing" element={<AdminMarketingPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="integrations" element={<AdminIntegrationsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
         </Route>
 

@@ -6013,6 +6013,193 @@ function CustomFieldsTab({ toast }) {
 }
 
 // ─────────────────────────────────────────────────────────
+//  INTEGRATIONS PAGE
+// ─────────────────────────────────────────────────────────
+export function IntegrationsPage({ toast }) {
+  const [titanAccounts, setTitanAccounts] = useState([]);
+  const [isManageTitanAccountsOpen, setIsManageTitanAccountsOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const loadAccounts = async () => {
+    try {
+      setLoading(true);
+      const res = await api.titanEmail.getAccounts();
+      setTitanAccounts(res.data || []);
+    } catch (e) {
+      console.error('Failed to fetch Titan accounts', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  const integrationCards = [
+    { 
+      title: 'Titan Email', 
+      subtitle: titanAccounts.length > 0 ? `Sync firm communications and calendars. (${titanAccounts.length} account${titanAccounts.length === 1 ? '' : 's'} connected)` : 'Sync firm communications and calendars.', 
+      connected: titanAccounts.length > 0, 
+      action: () => setIsManageTitanAccountsOpen(true) 
+    },
+  ];
+
+  return (
+    <div className="animate-fade-in space-y-6 pb-20">
+      <PageHeader title="Integrations" subtitle="Connect external communication protocols, calendar services, and firm tools" />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {integrationCards.map((item) => (
+          <Card key={item.title} className="flex flex-col gap-6 border-white/5 bg-white/[0.02] backdrop-blur-xl p-8 rounded-[2rem] group hover:border-[#38bdf8]/30 transition-all overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#0057c7]/5 blur-3xl group-hover:bg-[#0057c7]/10 transition-all pointer-events-none" />
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-900 text-white tracking-tight leading-none mb-2">{item.title}</h3>
+                <p className="text-[12px] text-[#8a94a6] font-500 leading-relaxed opacity-70">{item.subtitle}</p>
+              </div>
+              <span className={`flex-shrink-0 inline-flex items-center px-3 py-1 rounded-lg text-[9px] font-900 uppercase tracking-widest border transition-all ${item.connected ? 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-white/5 text-[#8a94a6] border-white/10 opacity-50'}`}>
+                {item.connected ? 'Active Sync' : 'Offline'}
+              </span>
+            </div>
+            <div className="flex justify-end pt-5 mt-auto border-t border-white/5">
+              <button type="button" onClick={item.action} disabled={loading} className={`h-9 px-4 rounded-xl text-[10px] font-900 uppercase tracking-widest transition-all ${
+                item.title === 'Titan Email'
+                  ? 'bg-[#0057c7] text-white hover:bg-[#004bb1] shadow-lg shadow-[#0057c7]/20'
+                  : item.connected
+                    ? 'bg-white/5 text-[#8a94a6] hover:bg-[#ef4444]/10 hover:text-[#ef4444]'
+                    : 'bg-[#0057c7] text-white hover:bg-[#004bb1] shadow-lg shadow-[#0057c7]/20'
+              } disabled:opacity-50`}>
+                {item.title === 'Titan Email' ? (item.connected ? 'Manage Accounts' : 'Connect Account') : (item.connected ? 'Disconnect' : 'Connect')}
+              </button>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {isManageTitanAccountsOpen && createPortal(
+        <Modal
+          title="Manage Titan Mail Accounts"
+          onClose={() => setIsManageTitanAccountsOpen(false)}
+        >
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-[12px] font-900 text-white uppercase tracking-widest mb-3">Connected Accounts</h4>
+              {titanAccounts.length === 0 ? (
+                <div className="text-[12px] text-[#8a94a6] py-3 bg-white/[0.01] border border-white/5 rounded-xl text-center">
+                  No Titan accounts connected yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {titanAccounts.map(acc => (
+                    <div key={acc.id} className="flex items-center justify-between p-3.5 bg-white/[0.02] border border-white/5 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#0057c7]/10 flex items-center justify-center text-[#38bdf8]">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><path d="M22 6l-10 7L2 6" /></svg>
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-600 text-white leading-tight">{acc.email_address}</p>
+                          <p className="text-[10px] text-[#8a94a6] mt-0.5">{acc.imap_host}:{acc.imap_port} (IMAP)</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            setLoading(true);
+                            await api.titanEmail.deleteAccount(acc.id);
+                            toast('Account disconnected successfully', 'success');
+                            const res = await api.titanEmail.getAccounts();
+                            setTitanAccounts(res.data || []);
+                          } catch (err) {
+                            toast(err.message || 'Failed to disconnect account', 'error');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-400 text-[10px] font-900 uppercase tracking-wider transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-white/5 pt-6">
+              <h4 className="text-[12px] font-900 text-white uppercase tracking-widest mb-4">Connect New Account</h4>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.target);
+                  const data = Object.fromEntries(formData.entries());
+                  try {
+                    setLoading(true);
+                    await api.titanEmail.addAccount({
+                      email_address: data.email_address,
+                      password: data.password,
+                      imap_host: data.imap_host,
+                      imap_port: data.imap_port ? parseInt(data.imap_port, 10) : 993,
+                      smtp_host: data.smtp_host,
+                      smtp_port: data.smtp_port ? parseInt(data.smtp_port, 10) : 465,
+                      username: data.username || data.email_address
+                    });
+                    toast('Titan account connected successfully!', 'success');
+                    const res = await api.titanEmail.getAccounts();
+                    setTitanAccounts(res.data || []);
+                    e.target.reset();
+                  } catch (err) {
+                    toast(err.message || 'Failed to connect account', 'error');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Email Address" required>
+                    <Input name="email_address" type="email" placeholder="e.g. victoria@firm.com" required />
+                  </Field>
+                  <Field label="App Password" required>
+                    <Input name="password" type="password" placeholder="••••••••••••" required />
+                  </Field>
+                </div>
+
+                <div className="p-4 bg-white/[0.01] border border-white/5 rounded-2xl space-y-4">
+                  <p className="text-[10px] font-900 text-[#8a94a6] uppercase tracking-widest">Advanced Connection Settings</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="IMAP Host">
+                      <Input name="imap_host" defaultValue="imap.titan.email" />
+                    </Field>
+                    <Field label="IMAP Port">
+                      <Input name="imap_port" type="number" defaultValue="993" />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="SMTP Host">
+                      <Input name="smtp_host" defaultValue="smtp.titan.email" />
+                    </Field>
+                    <Field label="SMTP Port">
+                      <Input name="smtp_port" type="number" defaultValue="465" />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => setIsManageTitanAccountsOpen(false)} className="btn btn-secondary btn-sm">Close</button>
+                  <button type="submit" disabled={loading} className="btn btn-primary btn-sm">Connect Account</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Modal>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 //  SETTINGS PAGE
 // ─────────────────────────────────────────────────────────
 export function SettingsPage({ toast }) {
@@ -6026,22 +6213,6 @@ export function SettingsPage({ toast }) {
 
   const logoInputRef = useRef(null);
   const letterheadInputRef = useRef(null);
-
-  const [titanAccounts, setTitanAccounts] = useState([]);
-  const [isManageTitanAccountsOpen, setIsManageTitanAccountsOpen] = useState(false);
-
-  useEffect(() => {
-    if (activeTab === 'Integrations') {
-      (async () => {
-        try {
-          const res = await api.titanEmail.getAccounts();
-          setTitanAccounts(res.data || []);
-        } catch (e) {
-          console.error('Failed to fetch Titan accounts', e);
-        }
-      })();
-    }
-  }, [activeTab]);
 
   useEffect(() => {
     (async () => {
@@ -6193,7 +6364,7 @@ export function SettingsPage({ toast }) {
     <div className="animate-fade-in space-y-6 pb-20">
       <PageHeader title="Firm Configuration" subtitle="Neural control center for firm protocols and operational settings" />
 
-      <Tabs tabs={['Firm Profile', 'Practice Areas', 'Custom Fields', 'Integrations', 'Social Links', 'Security']} active={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={['Firm Profile', 'Practice Areas', 'Custom Fields', 'Social Links', 'Security']} active={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'Practice Areas' && <PracticeAreasTab toast={toast} />}
       {activeTab === 'Custom Fields' && <CustomFieldsTab toast={toast} />}
@@ -6260,35 +6431,7 @@ export function SettingsPage({ toast }) {
         </Card>
       )}
 
-      {activeTab === 'Integrations' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {integrationCards.map((item) => (
-            <Card key={item.title} className="flex flex-col gap-6 border-white/5 bg-white/[0.02] backdrop-blur-xl p-8 rounded-[2rem] group hover:border-[#38bdf8]/30 transition-all overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#0057c7]/5 blur-3xl group-hover:bg-[#0057c7]/10 transition-all pointer-events-none" />
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h3 className="text-[15px] font-900 text-white tracking-tight leading-none mb-2">{item.title}</h3>
-                  <p className="text-[12px] text-[#8a94a6] font-500 leading-relaxed opacity-70">{item.subtitle}</p>
-                </div>
-                <span className={`flex-shrink-0 inline-flex items-center px-3 py-1 rounded-lg text-[9px] font-900 uppercase tracking-widest border transition-all ${item.connected ? 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-white/5 text-[#8a94a6] border-white/10 opacity-50'}`}>
-                  {item.connected ? 'Active Sync' : 'Offline'}
-                </span>
-              </div>
-              <div className="flex justify-end pt-5 mt-auto border-t border-white/5">
-                <button type="button" onClick={item.action} disabled={loading} className={`h-9 px-4 rounded-xl text-[10px] font-900 uppercase tracking-widest transition-all ${
-                  item.title === 'Titan Email'
-                    ? 'bg-[#0057c7] text-white hover:bg-[#004bb1] shadow-lg shadow-[#0057c7]/20'
-                    : item.connected
-                      ? 'bg-white/5 text-[#8a94a6] hover:bg-[#ef4444]/10 hover:text-[#ef4444]'
-                      : 'bg-[#0057c7] text-white hover:bg-[#004bb1] shadow-lg shadow-[#0057c7]/20'
-                } disabled:opacity-50`}>
-                  {item.title === 'Titan Email' ? (item.connected ? 'Manage Accounts' : 'Connect Account') : (item.connected ? 'Disconnect' : 'Connect')}
-                </button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+
       
       {activeTab === 'Social Links' && <SocialLinksSettings toast={toast} />}
 
