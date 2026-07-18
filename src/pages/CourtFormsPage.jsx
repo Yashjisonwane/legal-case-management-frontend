@@ -377,7 +377,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
             </svg>
           </div>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: 0 }}>Court Forms</h1>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: 0 }}>Library</h1>
             <p style={{ fontSize: 13, color: '#8a94a6', margin: 0 }}>California Judicial Council Forms — Auto-Prefill &amp; PDF Generator</p>
           </div>
         </div>
