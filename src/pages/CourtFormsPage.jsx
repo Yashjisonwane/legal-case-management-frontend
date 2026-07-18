@@ -227,6 +227,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
   const [formValues,     setFormValues]     = useState({});
   const [generating,     setGenerating]     = useState(false);
   const [saving,         setSaving]         = useState(false);
+  const [pdfPreview,     setPdfPreview]     = useState(null);
   const [favorites, setFavorites] = useState(() => {
     try {
       const saved = localStorage.getItem('court_form_favorites');
@@ -311,14 +312,26 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
   const doGenerate = async draftId => {
     setGenerating(true);
     try {
-      const r = await api.courtForms.generatePdf(draftId);
-      const url = URL.createObjectURL(r.data);
-      const a = document.createElement('a'); a.href = url;
-      a.download = `${wizard.template.form_number}_form.pdf`; a.click();
-      URL.revokeObjectURL(url);
-      toast?.('PDF generated and downloaded!', 'success');
-      setWizard(null); fetchAll();
-    } catch { toast?.('PDF generation failed', 'error'); }
+      const r = await api.courtForms.generatePdf(draftId, { form_data: formValues });
+      const blob = r.data;
+      const url = URL.createObjectURL(blob);
+      const filename = `${wizard?.template?.form_number || 'court'}_form.pdf`;
+
+      setPdfPreview({
+        url,
+        blob,
+        filename,
+        title: wizard?.template?.title || 'Court Form',
+        formNumber: wizard?.template?.form_number || 'Form'
+      });
+
+      setWizard(null);
+      toast?.('PDF generated successfully!', 'success');
+      fetchAll();
+    } catch (err) {
+      console.error('[FRONTEND_DOWNLOAD_ERROR]', err);
+      toast?.('PDF generation failed', 'error');
+    }
     finally { setGenerating(false); }
   };
 
@@ -826,6 +839,94 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PDF PREVIEW & ACTION MODAL POPUP ── */}
+      {pdfPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#0a1628', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, width: '100%', maxWidth: 1000, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 30px 60px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
+
+            {/* Modal Navigation Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: '#0d1f3c', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#38bdf8', background: 'rgba(56,189,248,0.15)', padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(56,189,248,0.3)' }}>
+                  {pdfPreview.formNumber}
+                </span>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>{pdfPreview.title}</h3>
+                  <span style={{ fontSize: 11, color: '#8a94a6' }}>Generated Form Preview — Interactive &amp; Fillable</span>
+                </div>
+              </div>
+
+              {/* Header Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Print Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const iframe = document.getElementById('pdf-preview-iframe');
+                    if (iframe && iframe.contentWindow) {
+                      iframe.contentWindow.focus();
+                      iframe.contentWindow.print();
+                    } else {
+                      window.open(pdfPreview.url, '_blank');
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                >
+                  <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                  </svg>
+                  Print
+                </button>
+
+                {/* Download Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = pdfPreview.url;
+                    a.download = pdfPreview.filename;
+                    a.click();
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', background: '#0057c7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#0066e0'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#0057c7'}
+                >
+                  <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                  Download PDF
+                </button>
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pdfPreview.url) URL.revokeObjectURL(pdfPreview.url);
+                    setPdfPreview(null);
+                  }}
+                  style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#8a94a6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}
+                >
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded PDF Viewer Iframe */}
+            <div style={{ flex: 1, background: '#1e293b', position: 'relative' }}>
+              <iframe
+                id="pdf-preview-iframe"
+                src={pdfPreview.url}
+                title={pdfPreview.title}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+              />
+            </div>
+
           </div>
         </div>
       )}

@@ -70,7 +70,9 @@ async function request(endpoint, options = {}) {
         throw new Error(text || 'Download failed');
       }
       const blob = await response.blob();
-      return { data: blob };
+      const headers = {};
+      response.headers.forEach((val, key) => { headers[key] = val; });
+      return { data: blob, headers };
     }
 
     const text = await response.text();
@@ -463,7 +465,7 @@ export default {
     updateDraft: (id, data) => request(`/court-forms/drafts/${id}`, { method: 'PUT', body: data }),
     deleteDraft: (id) => request(`/court-forms/drafts/${id}`, { method: 'DELETE' }),
     // PDF Generation (returns a Blob)
-    generatePdf: (draftId) => request(`/court-forms/generate/${draftId}`, { method: 'POST', responseType: 'blob' }),
+    generatePdf: (draftId, data) => request(`/court-forms/generate/${draftId}`, { method: 'POST', body: data, responseType: 'blob' }),
   },
 };
 
