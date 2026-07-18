@@ -6303,62 +6303,7 @@ export function SettingsPage({ toast }) {
     }
   };
 
-  const integrationPlaceholder = () => toast('Integration API is not available.', 'info');
-  
-  const [outlookConnected, setOutlookConnected] = useState(false);
 
-  useEffect(() => {
-    if (activeTab === 'Integrations') {
-      (async () => {
-        try {
-          const res = await api.calendar.getOutlookStatus();
-          setOutlookConnected(!!res.connected);
-        } catch (e) {
-          console.error('Failed to fetch Outlook connection status', e);
-        }
-      })();
-    }
-  }, [activeTab]);
-
-  const toggleOutlookSync = async () => {
-    try {
-      setLoading(true);
-      if (outlookConnected) {
-        await api.calendar.disconnectOutlook();
-        setOutlookConnected(false);
-        toast('Microsoft Outlook Calendar Disconnected', 'success');
-      } else {
-        const token = localStorage.getItem('vktori_token');
-        window.location.href = `${API_BASE_URL}/calendar/outlook/connect?token=${token}`;
-      }
-    } catch (err) {
-      toast(err.message || 'Failed to toggle Outlook sync', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleTitanSync = async () => {
-    try {
-      setLoading(true);
-      const isConnected = !!settings.titan_sync_enabled;
-      await api.settings.update({ titan_sync_enabled: !isConnected });
-      setSettings(prev => ({ ...prev, titan_sync_enabled: !isConnected }));
-      toast(`Titan Calendar Sync ${!isConnected ? 'Activated' : 'Deactivated'}`, 'success');
-    } catch (err) {
-      toast(err.message || 'Failed to toggle Titan sync', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const integrationCards = [
-    // { title: 'Titan Calendar', subtitle: 'Bi-directional sync with Titan Calendar backend.', connected: !!settings.titan_sync_enabled, action: toggleTitanSync },
-    { title: 'Titan Email', subtitle: titanAccounts.length > 0 ? `Sync firm communications and calendars. (${titanAccounts.length} account${titanAccounts.length === 1 ? '' : 's'} connected)` : 'Sync firm communications and calendars.', connected: titanAccounts.length > 0, action: () => setIsManageTitanAccountsOpen(true) },
-    // { title: 'Zoom Video', subtitle: 'Automate hearing and consultation links.', connected: true, action: integrationPlaceholder },
-    // { title: 'Microsoft Outlook', subtitle: 'Bi-directional calendar and task sync.', connected: outlookConnected, action: toggleOutlookSync },
-    // { title: 'Microsoft Teams', subtitle: 'Internal firm collaboration and chat.', connected: false, action: integrationPlaceholder },
-  ];
 
   return (
     <div className="animate-fade-in space-y-6 pb-20">
