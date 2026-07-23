@@ -22,6 +22,7 @@ const SYSTEM_FIELDS = [
   { key: 'attorney_email',label: 'Attorney Email' },
   { key: 'firm_name',     label: 'Firm Name' },
   { key: 'firm_address',  label: 'Firm Address' },
+  { key: 'firm_zip',      label: 'Firm Zip Code' },
   { key: 'firm_phone',    label: 'Firm Phone' },
   { key: 'client_name',   label: 'Client Name' },
   { key: 'client_address',label: 'Client Address' },
@@ -235,6 +236,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
     } catch { return []; }
   });
   const [showOnlyFavs, setShowOnlyFavs] = useState(false);
+  const [deleteModal, setDeleteModal] = useState(null);
 
   const toggleFavorite = (id) => {
     setFavorites(prev => {
@@ -244,22 +246,25 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
     });
   };
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const [tR, dR, mR] = await Promise.all([
+      // Fetch matters asynchronously in background so it doesn't block forms from loading
+      api.matters.list({ limit: 200 }).then(mR => {
+        setMatters(Array.isArray(mR.data) ? mR.data : []);
+      }).catch(e => console.error('Failed to load matters', e));
+
+      const [tR, dR] = await Promise.all([
         api.courtForms.listTemplates(),
         api.courtForms.listDrafts(),
-        api.matters.list({ limit: 200 }),
       ]);
       setTemplates(Array.isArray(tR.data) ? tR.data : []);
       setDrafts(Array.isArray(dR.data) ? dR.data : []);
-      setMatters(Array.isArray(mR.data) ? mR.data : []);
     } catch { toast?.('Failed to load data', 'error'); }
-    finally { setLoading(false); }
+    finally { if (showLoading) setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(true); }, [fetchAll]);
 
   const filteredTemplates = templates.filter(t => {
     const q = search.toLowerCase();
@@ -271,19 +276,22 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
   const practiceAreas = [...new Set(templates.map(t => t.practice_area).filter(Boolean))];
 
   const openWizard = async (template, draft = null) => {
+    // Open modal instantly without waiting for network
+    setWizard({ template, matter_id: draft?.matter?.id || '', draft_id: draft?.id || null });
     setPrefillData({});
     setFormValues(draft?.form_data || {});
     setWizardStep(draft ? 2 : 1);
     
-    let fullTemplate = template;
+    // Fetch full template in background and update state silently
     try {
       const res = await api.courtForms.getTemplate(template.id);
-      if (res && res.data) fullTemplate = res.data;
+      if (res && res.data) {
+        setWizard(prev => prev ? { ...prev, template: res.data } : null);
+      }
     } catch (e) {
       console.error('Failed to fetch full template detail:', e);
     }
     
-    setWizard({ template: fullTemplate, matter_id: draft?.matter?.id || '', draft_id: draft?.id || null });
     if (draft?.matter?.id) {
       try { const r = await api.courtForms.prefill(draft.matter.id); setPrefillData(r.data || {}); } catch {}
     }
@@ -304,7 +312,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
         const r = await api.courtForms.createDraft({ template_id: wizard.template.id, matter_id: wizard.matter_id, form_data: formValues });
         setWizard(p => ({ ...p, draft_id: r.data?.id }));
       }
-      toast?.('Draft saved', 'success'); fetchAll();
+      toast?.('Draft saved', 'success'); fetchAll(false);
     } catch { toast?.('Failed to save draft', 'error'); }
     finally { setSaving(false); }
   };
@@ -327,7 +335,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
 
       setWizard(null);
       toast?.('PDF generated successfully!', 'success');
-      fetchAll();
+      fetchAll(false);
     } catch (err) {
       console.error('[FRONTEND_DOWNLOAD_ERROR]', err);
       toast?.('PDF generation failed', 'error');
@@ -351,9 +359,9 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
   };
 
   const sx = { // shared styles shorthand
-    page:    { minHeight: '100vh', background: '#020b18', color: '#fff', padding: '32px' },
+    page:    { minHeight: '100vh', background: '#020b18', color: '#fff', padding: 'clamp(16px, 4vw, 32px)' },
     card:    { background: '#0a1628', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14 },
-    tabBar:  { display: 'flex', gap: 4, padding: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 12, width: 'fit-content', marginBottom: 28 },
+    tabBar:  { display: 'flex', flexWrap: 'wrap', gap: 4, padding: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 12, maxWidth: '100%', marginBottom: 28 },
     chip:    (active) => ({ padding: '8px 20px', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all .2s',
       background: active ? '#0057c7' : 'transparent', color: active ? '#fff' : '#8a94a6' }),
     input:   { width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fff', outline: 'none' },
@@ -388,67 +396,66 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
         {[
           { id: 'library', label: 'Forms Library' },
           { id: 'drafts',  label: `My Forms${drafts.length ? ` (${drafts.length})` : ''}` },
-          ...(role === 'admin' ? [{ id: 'mapping', label: 'Field Mapping' }] : []),
+          ...(role === 'admin' || role === 'lawyer' ? [{ id: 'mapping', label: 'Field Mapping' }] : []),
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={sx.chip(tab === t.id)}>{t.label}</button>
         ))}
       </div>
 
-      {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240 }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(0,87,199,0.3)', borderTopColor: '#0057c7', animation: 'spin 0.8s linear infinite' }}/>
-        </div>
-      ) : (
-        <>
-          {/* ── LIBRARY ── */}
-          {tab === 'library' && (
-            <div>
-              {/* Search + Filter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, ...sx.card, padding: '10px 16px' }}>
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#8a94a6" strokeWidth={2}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by form number or title…"
-                    style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: 13, flex: 1 }}/>
-                  {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#8a94a6', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>}
-                </div>
-                
-                <PracticeAreaDropdown practiceAreas={practiceAreas} value={practiceFilter} onChange={setPracticeFilter} />
-                
-                {/* Favorites filter toggle */}
-                <button type="button" onClick={() => setShowOnlyFavs(v => !v)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    background: showOnlyFavs ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${showOnlyFavs ? 'rgba(234,179,8,0.3)' : 'rgba(255,255,255,0.12)'}`,
-                    color: showOnlyFavs ? '#fde047' : '#8a94a6', transition: 'all 0.2s' }}>
-                  <svg width="14" height="14" fill={showOnlyFavs ? '#fde047' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.907c.969 0 1.371 1.24.588 1.81l-3.97 2.883a1 1 0 00-.364 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.97-2.883a1 1 0 00-1.176 0l-3.97 2.883c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.364-1.118l-3.97-2.883c-.783-.57-.38-1.81.588-1.81h4.906a1 1 0 00.95-.69l1.519-4.674z"/>
-                  </svg>
-                  Favorites
-                </button>
+      <>
+        {/* ── LIBRARY ── */}
+        {tab === 'library' && (
+          <div>
+            {/* Search + Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 200, display: 'flex', alignItems: 'center', gap: 10, ...sx.card, padding: '10px 16px' }}>
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#8a94a6" strokeWidth={2}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by form number or title…"
+                  style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: 13, flex: 1 }}/>
+                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#8a94a6', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>}
               </div>
+              
+              <PracticeAreaDropdown practiceAreas={practiceAreas} value={practiceFilter} onChange={setPracticeFilter} />
+              
+              {/* Favorites filter toggle */}
+              <button type="button" onClick={() => setShowOnlyFavs(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: showOnlyFavs ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${showOnlyFavs ? 'rgba(234,179,8,0.3)' : 'rgba(255,255,255,0.12)'}`,
+                  color: showOnlyFavs ? '#fde047' : '#8a94a6', transition: 'all 0.2s' }}>
+                <svg width="14" height="14" fill={showOnlyFavs ? '#fde047' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.907c.969 0 1.371 1.24.588 1.81l-3.97 2.883a1 1 0 00-.364 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.97-2.883a1 1 0 00-1.176 0l-3.97 2.883c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.364-1.118l-3.97-2.883c-.783-.57-.38-1.81.588-1.81h4.906a1 1 0 00.95-.69l1.519-4.674z"/>
+                </svg>
+                Favorites
+              </button>
+            </div>
 
-              {/* Results count */}
-              {(search || showOnlyFavs || practiceFilter) && (
-                <p style={{ fontSize: 13, color: '#8a94a6', marginBottom: 16 }}>
-                  {filteredTemplates.length} form{filteredTemplates.length !== 1 ? 's' : ''} found
-                </p>
-              )}
+            {/* Results count */}
+            {(search || showOnlyFavs || practiceFilter) && (
+              <p style={{ fontSize: 13, color: '#8a94a6', marginBottom: 16 }}>
+                {filteredTemplates.length} form{filteredTemplates.length !== 1 ? 's' : ''} found
+              </p>
+            )}
 
-              {/* Cards Grid */}
-              {filteredTemplates.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '80px 0', color: '#8a94a6' }}>
-                  <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1} style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }}>
-                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
-                  </svg>
-                  <p style={{ fontWeight: 600, fontSize: 15 }}>No forms found</p>
-                  <p style={{ fontSize: 13, marginTop: 4 }}>Try a different search term or clear the filters</p>
-                </div>
-              ) : (
+            {/* Cards Grid */}
+            {loading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(0,87,199,0.3)', borderTopColor: '#0057c7', animation: 'spin 0.8s linear infinite' }}/>
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '80px 0', color: '#8a94a6' }}>
+                <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1} style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }}>
+                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
+                </svg>
+                <p style={{ fontWeight: 600, fontSize: 15 }}>No forms found</p>
+                <p style={{ fontSize: 13, marginTop: 4 }}>Try a different search term or clear the filters</p>
+              </div>
+            ) : (
                 <div style={{ display: 'grid', gap: 10 }}>
                   {filteredTemplates.map(t => {
                     const isFav = favorites.includes(t.id);
                     return (
-                      <div key={t.id} style={{ ...sx.card, display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', transition: 'border-color .2s' }}
+                      <div key={t.id} style={{ ...sx.card, display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', transition: 'border-color .2s', flexWrap: 'wrap' }}
                         onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(0,87,199,0.4)'}
                         onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}>
                         
@@ -470,8 +477,8 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                           </svg>
                         </div>
                         {/* Info */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
+                        <div style={{ flex: '1 1 200px', minWidth: 200 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3, flexWrap: 'wrap' }}>
                             <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>{t.form_number}</span>
                             {t.practice_area && (
                               <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 20, background: 'rgba(0,87,199,0.2)', color: '#38bdf8', border: '1px solid rgba(0,87,199,0.25)' }}>
@@ -481,14 +488,24 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                           </div>
                           <p style={{ fontSize: 14, fontWeight: 500, color: '#fff', margin: 0 }}>{t.title}</p>
                         </div>
-                        {/* Generate Button */}
-                        <button onClick={() => openWizard(t)}
-                          style={{ ...sx.btn('primary'), flexShrink: 0, whiteSpace: 'nowrap' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#0066e0'}
-                          onMouseLeave={e => e.currentTarget.style.background = '#0057c7'}>
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4"/></svg>
-                          Generate
-                        </button>
+                        {/* Right Buttons */}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteModal({ type: 'template', item: t }); }}
+                            style={{ ...sx.btn('ghost'), padding: '10px 14px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'; }}
+                            title="Delete Template">
+                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                          </button>
+                          {/* Generate Button */}
+                          <button onClick={() => openWizard(t)}
+                            style={{ ...sx.btn('primary'), flexShrink: 0, whiteSpace: 'nowrap' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#0066e0'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#0057c7'}>
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4"/></svg>
+                            Generate
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -510,8 +527,8 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                   <p style={{ fontSize: 13, color: '#8a94a6' }}>Generate your first form from the <strong style={{ color: '#38bdf8' }}>Forms Library</strong> tab</p>
                 </div>
               ) : (
-                <div style={{ ...sx.card, overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div style={{ ...sx.card, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
                     <thead>
                       <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                         {['Form', 'Matter', 'Status', 'Generated By', 'Last Modified', 'Actions'].map((h, i) => (
@@ -540,10 +557,10 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                             <td style={{ padding: '16px 20px', fontSize: 13, color: '#8a94a6' }}>{d.creator?.full_name || '—'}</td>
                             <td style={{ padding: '16px 20px', fontSize: 13, color: '#8a94a6' }}>{new Date(d.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                             <td style={{ padding: '16px 20px' }}>
-                              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                                 <button onClick={() => openWizard(d.template, d)} style={sx.btn('edit')}>Edit</button>
-                                {d.status !== 'filed' && <button onClick={() => { api.courtForms.updateDraft(d.id, { status: 'filed' }).then(() => { toast?.('Marked as filed', 'success'); fetchAll(); }).catch(() => toast?.('Failed', 'error')); }} style={sx.btn('success')}>Mark Filed</button>}
-                                <button onClick={() => { api.courtForms.deleteDraft(d.id).then(() => { toast?.('Deleted', 'success'); fetchAll(); }).catch(() => toast?.('Failed', 'error')); }} style={sx.btn('danger')}>Delete</button>
+                                {d.status !== 'filed' && <button onClick={() => { api.courtForms.updateDraft(d.id, { status: 'filed' }).then(() => { toast?.('Marked as filed', 'success'); fetchAll(false); }).catch(() => toast?.('Failed', 'error')); }} style={sx.btn('success')}>Mark Filed</button>}
+                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteModal({ type: 'draft', item: d }); }} style={sx.btn('danger')}>Delete</button>
                               </div>
                             </td>
                           </tr>
@@ -557,9 +574,8 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
           )}
 
           {/* ── MAPPING ── */}
-          {tab === 'mapping' && <MappingTab templates={templates} toast={toast} onRefreshTemplates={fetchAll} />}
+          {tab === 'mapping' && <MappingTab templates={templates} toast={toast} onRefreshTemplates={() => fetchAll(false)} />}
         </>
-      )}
 
       {/* ── WIZARD MODAL ── */}
       {wizard && (
@@ -581,7 +597,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
             </div>
 
             {/* Step Indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 26px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 26px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
               {['Select Matter', 'Fill Details', 'Generate PDF'].map((label, i) => {
                 const done    = wizardStep > i + 1;
                 const active  = wizardStep === i + 1;
@@ -644,7 +660,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                         ⚖️ Matter Details
                       </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                         {[
                           { key: 'case_title', label: 'Case Title' },
                           { key: 'case_number', label: 'Case Number' },
@@ -669,7 +685,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                         👥 Case Parties
                       </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                         {[
                           { key: 'plaintiff', label: 'Plaintiff' },
                           { key: 'defendant', label: 'Defendant' },
@@ -692,7 +708,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                         👤 Client Contact Details
                       </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                         {[
                           { key: 'client_name', label: 'Client Name' },
                           { key: 'client_email', label: 'Client Email' },
@@ -717,13 +733,14 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                         🏢 Attorney &amp; Firm Information
                       </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                         {[
                           { key: 'attorney_name', label: 'Attorney Name' },
                           { key: 'attorney_email', label: 'Attorney Email' },
                           { key: 'firm_name', label: 'Firm Name' },
                           { key: 'firm_phone', label: 'Firm Phone' },
                           { key: 'firm_address', label: 'Firm Address' },
+                          { key: 'firm_zip', label: 'Firm Zip Code' },
                         ].map(({ key, label }) => (
                           <div key={key} style={{ gridColumn: key === 'firm_address' ? 'span 2' : 'auto' }}>
                             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{label}</label>
@@ -743,7 +760,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                         🏛️ Court Details
                       </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                         {[
                           { key: 'court_name', label: 'Court Name' },
                           { key: 'judge_name', label: 'Judge Name' },
@@ -768,7 +785,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                       const STANDARD_KEYS = [
                         'case_title', 'case_number', 'plaintiff', 'defendant', 'court_name', 'judge_name',
                         'attorney_name', 'firm_name', 'client_name', 'client_address', 'client_phone', 'client_email',
-                        'filing_date', 'hearing_date', 'firm_address', 'firm_phone', 'court_address', 'matter_number',
+                        'filing_date', 'hearing_date', 'firm_address', 'firm_phone', 'firm_zip', 'court_address', 'matter_number',
                         'attorney_email'
                       ];
                       const mappings = wizard?.template?.mappings || [];
@@ -784,7 +801,7 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
                           <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
                             📝 Form Specific Details (Custom Fields)
                           </h3>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                             {uniqueCustomFields.map(cfName => {
                               const mapping = customFieldMappings.find(m => m.system_field_path === cfName);
                               const isCheckbox = mapping?.pdf_field_name?.toLowerCase()?.includes('_cb');
@@ -930,6 +947,30 @@ export default function CourtFormsPage({ toast, role = 'admin' }) {
           </div>
         </div>
       )}
+
+      {/* ── DELETE CONFIRMATION MODAL ── */}
+      {deleteModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#0d1f3c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, width: '100%', maxWidth: 400, boxShadow: '0 25px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+            <div style={{ padding: '24px', textAlign: 'center' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#ef4444' }}>
+                <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              </div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: '0 0 8px 0' }}>Confirm Deletion</h3>
+              <p style={{ fontSize: 14, color: '#8a94a6', margin: 0, lineHeight: 1.5 }}>
+                Are you sure you want to delete this {deleteModal.type}? This action cannot be undone.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 12, padding: '16px 24px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <button onClick={() => setDeleteModal(null)} style={{ flex: 1, padding: '10px', borderRadius: 8, background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => {
+                const action = deleteModal.type === 'template' ? api.courtForms.deleteTemplate(deleteModal.item.id) : api.courtForms.deleteDraft(deleteModal.item.id);
+                action.then(() => { toast?.(`${deleteModal.type === 'template' ? 'Template' : 'Form'} deleted`, 'success'); fetchAll(false); }).catch(() => toast?.('Failed to delete', 'error')).finally(() => setDeleteModal(null));
+              }} style={{ flex: 1, padding: '10px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1058,7 +1099,8 @@ function MappingTab({ templates, toast, onRefreshTemplates }) {
     { key: 'client_phone', label: 'Client Phone' }, { key: 'client_email', label: 'Client Email' },
     { key: 'filing_date', label: 'Filing Date' }, { key: 'hearing_date', label: 'Hearing Date' },
     { key: 'firm_address', label: 'Firm Address' }, { key: 'firm_phone', label: 'Firm Phone' },
-    { key: 'court_address', label: 'Court Address' }, { key: 'matter_number', label: 'Matter Number' },
+    { key: 'firm_zip', label: 'Firm Zip Code' }, { key: 'court_address', label: 'Court Address' }, 
+    { key: 'matter_number', label: 'Matter Number' },
     { key: 'attorney_email', label: 'Attorney Email' },
     ...customFields.map(cf => ({ key: cf.name, label: `${cf.name} (Custom Field)` }))
   ];
@@ -1202,7 +1244,7 @@ function MappingTab({ templates, toast, onRefreshTemplates }) {
           Upload a fillable Judicial Council PDF form. The system will read it using `pdf-lib`, extract all input box/checkbox keys, and let you map them.
         </p>
 
-        <form onSubmit={handleUpload} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+        <form onSubmit={handleUpload} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
           {/* 1. File Input (Top Full Width) */}
           <div style={{ gridColumn: 'span 3' }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8a94a6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Select Fillable PDF *</label>
@@ -1232,7 +1274,7 @@ function MappingTab({ templates, toast, onRefreshTemplates }) {
           </div>
 
           {/* 5. Upload Button */}
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gridColumn: '1 / -1' }}>
             <button type="submit" disabled={uploading}
               style={{ width: '100%', height: '40px', background: '#0057c7', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, transition: 'background .2s' }}
               onMouseEnter={e => { if (!uploading) e.currentTarget.style.background = '#0066e0'; }}
@@ -1281,8 +1323,8 @@ function MappingTab({ templates, toast, onRefreshTemplates }) {
             ) : (
               <div>
                 {maps.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', alignItems: 'center', gap: 12, padding: '14px 18px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
                       <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         {cleanPdfFieldName(m.pdf_field_name)}
                       </div>
@@ -1321,7 +1363,6 @@ function MappingTab({ templates, toast, onRefreshTemplates }) {
           </div>
         )}
       </div>
-
     </div>
   );
 }

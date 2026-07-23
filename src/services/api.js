@@ -18,7 +18,7 @@ function buildQuery(params) {
 }
 
 const requestCache = new Map();
-const CACHE_DURATION = 2000;
+const CACHE_DURATION = 4000;
 
 /**
  * Reusable fetch helper for API requests
@@ -124,11 +124,7 @@ async function request(endpoint, options = {}) {
     if (err instanceof TypeError && err.message === 'Failed to fetch') {
       const wrapped = new Error(`Cannot reach the server. Is the API running at ${API_BASE_URL}?`);
       wrapped.cause = err;
-      console.error(`API Error [${endpoint}]:`, wrapped);
       throw wrapped;
-    }
-    if (err.status !== 401) {
-      console.error(`API Error [${endpoint}]:`, err);
     }
     throw err;
   }

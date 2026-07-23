@@ -319,7 +319,7 @@ export function LawyerCasesPage({ navigate, toast, openModal }) {
       </PageHeader>
       
       <div className="relative z-10">
-        <Table headers={['Matter ID','Title','Client','Type','Status','Next Hearing','Priority','']}>
+        <Table headers={['Matter ID','Title','Parties','Type','Status','Next Hearing','Priority','']}>
         {myCases.map(c => (
           <Tr key={c.id} className="hover:bg-white/[0.02] transition-colors border-b border-white/5">
             <Td className="whitespace-nowrap"><span className="font-mono text-[12px] text-[#38bdf8] font-700 tracking-wider">{c.matter_number}</span></Td>

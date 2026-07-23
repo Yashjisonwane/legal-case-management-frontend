@@ -342,9 +342,14 @@ async function defaultModalSubmit(type, modalData, values, { role, user, toast, 
     case 'add-case': {
       if (!uid) throw new Error('Not signed in.');
       const clientIds = values.clientIds || [];
-      if (!Array.isArray(clientIds) || clientIds.length === 0) throw new Error('Select at least one party.');
+      const inlineParties = values.inlineParties || [];
+      if ((!Array.isArray(clientIds) || clientIds.length === 0) && (!Array.isArray(inlineParties) || inlineParties.length === 0)) {
+        throw new Error('Select at least one existing party or add a new party.');
+      }
       let assigned_lawyer_id = values.lawyerId ? parseInt(values.lawyerId, 10) : null;
-      if (role === 'lawyer' && !Number.isFinite(assigned_lawyer_id)) assigned_lawyer_id = uid;
+      if (role === 'lawyer' && (!assigned_lawyer_id || assigned_lawyer_id !== uid)) {
+        throw new Error('Lawyer can only create matters assigned to self');
+      }
       if (!Number.isFinite(assigned_lawyer_id)) assigned_lawyer_id = null;
       let practice = values.matterType || values.type || 'General';
       if (practice === 'other') {
@@ -354,6 +359,7 @@ async function defaultModalSubmit(type, modalData, values, { role, user, toast, 
       await api.matters.create({
         title: values.title,
         clientIds: clientIds,
+        inlineParties: inlineParties,
         assigned_lawyer_id,
         practice_area: practice,
         matter_type: practice,
@@ -1006,6 +1012,21 @@ function AppModal({ type, data, onClose, toast, onSave, navigate, role, user, lo
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
+  const [inlineParties, setInlineParties] = useState([]);
+  const [showAddPartyForm, setShowAddPartyForm] = useState(false);
+  const [newPartyState, setNewPartyState] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    home_address: '',
+    date_of_birth: '',
+    government_id: '',
+    insurance_number: '',
+    notes: '',
+    party_type: 'Individual',
+    party_role: 'Client'
+  });
+
   const [uploadQueue, setUploadQueue] = useState([]);
   const [isUploadingQueue, setIsUploadingQueue] = useState(false);
   const abortControllersRef = useRef({});
@@ -1383,6 +1404,11 @@ function AppModal({ type, data, onClose, toast, onSave, navigate, role, user, lo
         <div className="mb-3"><Field label="Email Address" required><Input name="email" type="email" placeholder="john@example.com" required /></Field></div>
         <div className="mb-3"><Field label="Phone"><Input name="phone" placeholder="+1 (555) 000-0000" /></Field></div>
         <div className="mb-3"><Field label="Home Address"><Input name="home_address" placeholder="456 Main St, City" /></Field></div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <Field label="Date of Birth"><Input name="date_of_birth" type="date" /></Field>
+          <Field label="Government ID"><Input name="government_id" placeholder="Driver's License / SSN" /></Field>
+        </div>
+        <div className="mb-3"><Field label="Insurance Number"><Input name="insurance_number" placeholder="Policy or claim number" /></Field></div>
         
         <div className="mb-3"><Field label="Opposing Party Name"><Input name="opposing_party_name" placeholder="Opposing Party Name" /></Field></div>
         <div className="mb-3"><Field label="Opposing Law Firm & Contacts"><Input name="opposing_law_firm" placeholder="Firm Name / Phone / Email" /></Field></div>
@@ -1458,6 +1484,11 @@ function AppModal({ type, data, onClose, toast, onSave, navigate, role, user, lo
               </Field>
             </div>
             <div className="mb-3"><Field label="Home Address"><Input name="home_address" defaultValue={data?.home_address || ''} /></Field></div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="Date of Birth"><Input name="date_of_birth" type="date" defaultValue={data?.date_of_birth ? new Date(data.date_of_birth).toISOString().split('T')[0] : ''} /></Field>
+              <Field label="Government ID"><Input name="government_id" defaultValue={data?.government_id || ''} placeholder="Driver's License / SSN" /></Field>
+            </div>
+            <div className="mb-3"><Field label="Insurance Number"><Input name="insurance_number" defaultValue={data?.insurance_number || ''} placeholder="Policy or claim number" /></Field></div>
             
             <div className="mb-3"><Field label="Opposing Party Name"><Input name="opposing_party_name" defaultValue={data?.opposing_party_name || ''} placeholder="Opposing Party Name" /></Field></div>
             <div className="mb-3"><Field label="Opposing Law Firm & Contacts"><Input name="opposing_law_firm" defaultValue={data?.opposing_law_firm || ''} placeholder="Firm Name / Phone / Email" /></Field></div>
@@ -1473,28 +1504,197 @@ function AppModal({ type, data, onClose, toast, onSave, navigate, role, user, lo
       title: 'Create New Matter', wide: true,
       body: <>
         <div className="mb-3"><Field label="Matter Title" required><Input name="title" placeholder="Plaintiff vs. Defendant" required /></Field></div>
-        <div className="mb-3">
-          <Field label="Clients" required>
-            <div className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-4 max-h-[160px] overflow-y-auto space-y-2.5 custom-scrollbar">
-              {clientRows.length > 0 ? (
-                clientRows.map((c) => (
-                  <label key={c.id} className="flex items-center gap-3 cursor-pointer group text-white">
-                    <input 
-                      type="checkbox" 
-                      name="clientIds" 
-                      value={c.id} 
-                      className="w-4.5 h-4.5 rounded border-white/20 bg-white/5 text-[#38bdf8] focus:ring-0 cursor-pointer accent-[#38bdf8]" 
-                    />
-                    <span className="text-[13px] font-700 tracking-tight group-hover:text-[#38bdf8] transition-colors">
-                      {c.full_name || c.name} <span className="text-[11px] text-[#8a94a6] font-800 uppercase tracking-widest ml-1.5 opacity-60">({c.party_role || 'Client'})</span>
-                    </span>
-                  </label>
-                ))
-              ) : (
-                <p className="text-[12px] text-[#8a94a6] font-800 uppercase tracking-widest p-2 opacity-50">No registered parties found</p>
-              )}
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-900 text-[#8a94a6] uppercase tracking-widest">Parties to Action</label>
+            <button
+              type="button"
+              onClick={() => setShowAddPartyForm(!showAddPartyForm)}
+              className="text-[11px] font-800 text-[#38bdf8] hover:underline flex items-center gap-1"
+            >
+              {showAddPartyForm ? '− Cancel New Party' : '+ Add New Party'}
+            </button>
+          </div>
+
+          {/* List of existing registered parties selection */}
+          <div className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-4 max-h-[140px] overflow-y-auto space-y-2.5 custom-scrollbar">
+            <p className="text-[10px] text-[#8a94a6] font-bold uppercase tracking-wider mb-1">Select Existing Registered Parties:</p>
+            {clientRows.length > 0 ? (
+              clientRows.map((c) => (
+                <label key={c.id} className="flex items-center gap-3 cursor-pointer group text-white">
+                  <input 
+                    type="checkbox" 
+                    name="clientIds" 
+                    value={c.id} 
+                    className="w-4.5 h-4.5 rounded border-white/20 bg-white/5 text-[#38bdf8] focus:ring-0 cursor-pointer accent-[#38bdf8]" 
+                  />
+                  <span className="text-[13px] font-700 tracking-tight group-hover:text-[#38bdf8] transition-colors">
+                    {c.full_name || c.name} <span className="text-[11px] text-[#8a94a6] font-800 uppercase tracking-widest ml-1.5 opacity-60">({c.party_role || 'Party'})</span>
+                  </span>
+                </label>
+              ))
+            ) : (
+              <p className="text-[12px] text-[#8a94a6] font-800 uppercase tracking-widest p-2 opacity-50">No registered parties found</p>
+            )}
+          </div>
+
+          {/* Added Inline Parties list */}
+          {inlineParties.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-[#38bdf8] font-bold uppercase tracking-wider">Newly Added Parties ({inlineParties.length}):</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {inlineParties.map((p, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-[#0057c7]/10 border border-[#0057c7]/30 text-white text-xs">
+                    <div>
+                      <span className="font-bold text-white block">{p.full_name}</span>
+                      <span className="text-[10px] text-[#38bdf8] block">{p.email} • {p.party_role || 'Party'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInlineParties(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-red-400 hover:text-red-300 font-bold px-2 text-sm"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </Field>
+          )}
+
+          {/* Inline New Party Form */}
+          {showAddPartyForm && (
+            <div className="p-4 rounded-2xl bg-white/[0.04] border border-[#38bdf8]/30 space-y-3 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[12px] font-900 text-[#38bdf8] uppercase tracking-widest">New Party Details</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    value={newPartyState.full_name}
+                    onChange={e => setNewPartyState(p => ({ ...p, full_name: e.target.value }))}
+                    placeholder="John Doe"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    value={newPartyState.email}
+                    onChange={e => setNewPartyState(p => ({ ...p, email: e.target.value }))}
+                    placeholder="john@example.com"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    value={newPartyState.phone}
+                    onChange={e => setNewPartyState(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="+1 (555) 000-0000"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={newPartyState.date_of_birth}
+                    onChange={e => setNewPartyState(p => ({ ...p, date_of_birth: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Government ID</label>
+                  <input
+                    type="text"
+                    value={newPartyState.government_id}
+                    onChange={e => setNewPartyState(p => ({ ...p, government_id: e.target.value }))}
+                    placeholder="Driver's License / SSN"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Insurance Number</label>
+                  <input
+                    type="text"
+                    value={newPartyState.insurance_number}
+                    onChange={e => setNewPartyState(p => ({ ...p, insurance_number: e.target.value }))}
+                    placeholder="Policy / Claim #"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Party Role</label>
+                  <select
+                    value={newPartyState.party_role}
+                    onChange={e => setNewPartyState(p => ({ ...p, party_role: e.target.value }))}
+                    className="w-full bg-[#161c2a] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  >
+                    <option value="Client">Client</option>
+                    <option value="Plaintiff">Plaintiff</option>
+                    <option value="Defendant">Defendant</option>
+                    <option value="Petitioner">Petitioner</option>
+                    <option value="Respondent">Respondent</option>
+                    <option value="Claimant">Claimant</option>
+                    <option value="Witness">Witness</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={newPartyState.home_address}
+                    onChange={e => setNewPartyState(p => ({ ...p, home_address: e.target.value }))}
+                    placeholder="Street, City, State"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-[#8a94a6] font-bold uppercase block mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  value={newPartyState.notes}
+                  onChange={e => setNewPartyState(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="Notes about this party..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:border-[#38bdf8] outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!newPartyState.full_name || !newPartyState.email) {
+                    toast('Please enter Full Name and Email for the party.', 'error');
+                    return;
+                  }
+                  setInlineParties(prev => [...prev, { ...newPartyState }]);
+                  setNewPartyState({
+                    full_name: '',
+                    email: '',
+                    phone: '',
+                    home_address: '',
+                    date_of_birth: '',
+                    government_id: '',
+                    insurance_number: '',
+                    notes: '',
+                    party_type: 'Individual',
+                    party_role: 'Client'
+                  });
+                  setShowAddPartyForm(false);
+                  toast(`Party ${newPartyState.full_name} added to matter.`, 'success');
+                }}
+                className="w-full py-2 bg-[#0057c7] hover:bg-[#004bb1] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+              >
+                + Add Party to Matter
+              </button>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <Field label="Assigned Lawyer"><Select name="lawyerId"><option value="">Unassigned</option>{lawyerRows.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}</Select></Field>
@@ -3200,6 +3400,7 @@ function AppModal({ type, data, onClose, toast, onSave, navigate, role, user, lo
         values = Object.fromEntries(fd.entries());
         if (type === 'add-case') {
           values.clientIds = fd.getAll('clientIds');
+          values.inlineParties = inlineParties;
         }
         if (type === 'add-event') {
           values.internalAttendees = fd.getAll('internalAttendees');
